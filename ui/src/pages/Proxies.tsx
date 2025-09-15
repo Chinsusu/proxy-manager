@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Users, Activity, ChevronDown, ChevronRight, Server, Clock, Eye, EyeOff } from 'lucide-react';
+import { Users, Activity, ChevronDown, ChevronRight, Server, Clock, Eye, EyeOff, Plus, Upload } from 'lucide-react';
 import { format } from 'date-fns';
+import { ProxyBulkImportModal } from '../components/ProxyBulkImportModal';
+import toast from 'react-hot-toast';
 
 interface Proxy {
   id: string;
+  server_id: string;
+  label: string;
+  type?: string;
   host: string;
   port: number;
   username: string;
   password: string;
-  status: string;
-  server_id: string;
+  health: string;
   created_at: string;
   updated_at: string;
 }
@@ -25,13 +29,55 @@ interface ServerWithProxies {
   proxies: Proxy[];
 }
 
+interface ProxyImportData {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  type?: string;
+  health?: string;
+  label?: string;
+}
+
 export const Proxies: React.FC = () => {
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+
+  const queryClient = useQueryClient();
 
   const { data: servers, isLoading, error } = useQuery<ServerWithProxies[]>({
     queryKey: ['servers'],
     queryFn: () => api.get('/servers').then(res => res.data),
+  });
+
+  // Bulk import proxies mutation
+  const importProxiesMutation = useMutation({
+    mutationFn: async (proxies: ProxyImportData[]) => {
+      // Import all proxies as unassigned (no server_id)
+      const importPromises = proxies.map(proxy => 
+        api.post('/proxies', {
+          label: proxy.label || `Proxy-${proxy.host}-${proxy.port}`,
+          type: proxy.type || 'socks5',
+          host: proxy.host,
+          port: proxy.port,
+          username: proxy.username,
+          password: proxy.password,
+          health: proxy.health || 'unknown'
+          // No server_id - will be unassigned
+        })
+      );
+      return Promise.all(importPromises);
+    },
+    onSuccess: (results) => {
+      queryClient.invalidateQueries({ queryKey: ['servers'] });
+      queryClient.invalidateQueries({ queryKey: ['proxies'] });
+      setIsImportModalOpen(false);
+      toast.success(`Successfully imported ${results.length} proxies`);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to import proxies');
+    },
   });
 
   const toggleServerExpansion = (serverId: string) => {
@@ -54,6 +100,10 @@ export const Proxies: React.FC = () => {
     setVisiblePasswords(newVisible);
   };
 
+  const handleBulkImport = (proxies: ProxyImportData[]) => {
+    importProxiesMutation.mutate(proxies);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status?.toLowerCase()) {
       case 'active':
@@ -65,9 +115,23 @@ export const Proxies: React.FC = () => {
     }
   };
 
+  const getHealthColor = (health: string) => {
+    switch (health?.toLowerCase()) {
+      case 'ok':
+        return 'bg-green-100 text-green-800';
+      case 'fail':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
   // Filter servers that have proxies
   const serversWithProxies = servers?.filter(server => server.proxies && server.proxies.length > 0) || [];
   const totalProxies = serversWithProxies.reduce((total, server) => total + server.proxies.length, 0);
+
+  // Get available servers for import modal
+  const availableServers = servers?.map(s => ({ id: s.id, name: s.name })) || [];
 
   if (isLoading) {
     return (
@@ -94,22 +158,40 @@ export const Proxies: React.FC = () => {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Proxies</h1>
-        <p className="text-gray-600">
-          Manage your proxy connections grouped by server
-          {totalProxies > 0 && (
-            <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-              {totalProxies} total proxies
-            </span>
-          )}
-        </p>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Proxies</h1>
+            <p className="text-gray-600">
+              Manage your proxy connections grouped by server
+              {totalProxies > 0 && (
+                <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                  {totalProxies} total proxies
+                </span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Import
+          </button>
+        </div>
       </div>
 
       {serversWithProxies.length === 0 ? (
         <div className="text-center py-12">
           <Users className="mx-auto h-12 w-12 text-gray-400 mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">No proxies found</h3>
-          <p className="text-gray-500">Get started by adding your first proxy server.</p>
+          <p className="text-gray-500 mb-4">Get started by importing proxy lists.</p>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Import Proxies
+          </button>
         </div>
       ) : (
         <div className="space-y-4">
@@ -163,19 +245,28 @@ export const Proxies: React.FC = () => {
                           <div className="flex items-center space-x-4">
                             <div className="flex-shrink-0">
                               <div className={`w-3 h-3 rounded-full ${
-                                proxy.status?.toLowerCase() === 'active' 
+                                proxy.health?.toLowerCase() === 'ok' 
                                   ? 'bg-green-500' 
-                                  : 'bg-red-500'
+                                  : proxy.health?.toLowerCase() === 'fail'
+                                  ? 'bg-red-500'
+                                  : 'bg-gray-500'
                               }`}></div>
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center space-x-4">
                                 <div>
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {proxy.host}:{proxy.port}
+                                  <div className="flex items-center space-x-2">
+                                    <div className="text-sm font-medium text-gray-900">
+                                      {proxy.host}:{proxy.port}
+                                    </div>
+                                    <div className={`text-xs font-medium px-2 py-0.5 rounded text-white ${
+                                      proxy.type === "http" ? "bg-blue-500" : "bg-purple-500"
+                                    }`}>
+                                      {(proxy.type || "unknown").toUpperCase()}
+                                    </div>
                                   </div>
                                   <div className="text-xs text-gray-500 mt-1">
-                                    ID: {proxy.id}
+                                    {proxy.label} • ID: {proxy.id}
                                   </div>
                                 </div>
                                 <div className="min-w-0">
@@ -204,8 +295,8 @@ export const Proxies: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center space-x-4">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(proxy.status)}`}>
-                              {proxy.status}
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getHealthColor(proxy.health)}`}>
+                              {proxy.health}
                             </span>
                             <div className="text-xs text-gray-500 text-right">
                               <div className="flex items-center">
@@ -227,6 +318,15 @@ export const Proxies: React.FC = () => {
           ))}
         </div>
       )}
+
+      {/* Bulk Import Modal */}
+      <ProxyBulkImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImport={handleBulkImport}
+        isLoading={importProxiesMutation.isPending}
+        availableServers={availableServers}
+      />
     </div>
   );
 };
