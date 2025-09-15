@@ -186,9 +186,42 @@ func (h *ServerHandler) DeleteServer(c *gin.Context) {
 		return
 	}
 
-	// Delete server (this will cascade delete proxies and mappings due to foreign keys)
-	if err := h.db.Delete(&server).Error; err != nil {
+	// Start transaction
+	tx := h.db.Begin()
+	if tx.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// 1. Delete all mappings associated with this server
+	if err := tx.Where("server_id = ?", id).Delete(&models.Mapping{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server mappings"})
+		return
+	}
+
+	// 2. Unassign all proxies from this server (set server_id to 0 instead of nil)
+	if err := tx.Model(&models.Proxy{}).Where("server_id = ?", id).Update("server_id", 0).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign proxies"})
+		return
+	}
+
+	// 3. Delete the server itself
+	if err := tx.Delete(&server).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit().Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to commit transaction"})
 		return
 	}
 
