@@ -223,7 +223,7 @@ export const Servers: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {servers.map((server) => {
+          {servers.filter(server => server.id !== '0').map((server) => {
             const serverTags = parseServerTags(server.tags);
             
             return (
