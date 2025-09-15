@@ -4,10 +4,9 @@ import { X, Server } from 'lucide-react';
 interface ServerData {
   id?: string;
   name: string;
-  host: string;
-  port: number;
-  username: string;
-  password: string;
+  tags: string[];
+  wan_iface: string;
+  lan_iface: string;
   status: string;
 }
 
@@ -28,39 +27,54 @@ export const ServerModal: React.FC<ServerModalProps> = ({
 }) => {
   const [formData, setFormData] = useState<ServerData>({
     name: '',
-    host: '',
-    port: 22,
-    username: '',
-    password: '',
-    status: 'active'
+    tags: [],
+    wan_iface: '',
+    lan_iface: '',
+    status: 'offline'
   });
+
+  const [tagsInput, setTagsInput] = useState<string>('');
 
   useEffect(() => {
     if (server) {
       setFormData(server);
+      setTagsInput(server.tags.join(', '));
     } else {
       setFormData({
         name: '',
-        host: '',
-        port: 22,
-        username: '',
-        password: '',
-        status: 'active'
+        tags: [],
+        wan_iface: '',
+        lan_iface: '',
+        status: 'offline'
       });
+      setTagsInput('');
     }
   }, [server]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    // Parse tags from comma-separated input
+    const tags = tagsInput
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+    
+    onSubmit({
+      ...formData,
+      tags
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'port' ? parseInt(value) : value
+      [name]: value
     }));
+  };
+
+  const handleTagsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setTagsInput(e.target.value);
   };
 
   if (!isOpen) return null;
@@ -87,7 +101,7 @@ export const ServerModal: React.FC<ServerModalProps> = ({
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Server Name
+                Server Name *
               </label>
               <input
                 type="text"
@@ -102,63 +116,43 @@ export const ServerModal: React.FC<ServerModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Host
+                Tags
               </label>
               <input
                 type="text"
-                name="host"
-                value={formData.host}
-                onChange={handleChange}
+                value={tagsInput}
+                onChange={handleTagsChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter host address"
-                required
+                placeholder="Enter tags separated by commas (e.g., production, us-east)"
               />
+              <p className="text-xs text-gray-500 mt-1">Separate multiple tags with commas</p>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Port
-              </label>
-              <input
-                type="number"
-                name="port"
-                value={formData.port}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter port number"
-                min="1"
-                max="65535"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Username
+                WAN Interface
               </label>
               <input
                 type="text"
-                name="username"
-                value={formData.username}
+                name="wan_iface"
+                value={formData.wan_iface}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter username"
-                required
+                placeholder="e.g., eth0, wlan0"
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
+                LAN Interface
               </label>
               <input
-                type="password"
-                name="password"
-                value={formData.password}
+                type="text"
+                name="lan_iface"
+                value={formData.lan_iface}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter password"
-                required
+                placeholder="e.g., eth1, br0"
               />
             </div>
 
@@ -173,8 +167,8 @@ export const ServerModal: React.FC<ServerModalProps> = ({
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="offline">Offline</option>
+                <option value="online">Online</option>
               </select>
             </div>
           </div>
