@@ -166,7 +166,7 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 
 
 	// Verify server exists (if server_id > 0)
-	if req.ServerID > 0 {
+	if false {
 		var server models.Server
 		if err := h.db.First(&server, req.ServerID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})

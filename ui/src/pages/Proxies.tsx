@@ -46,9 +46,9 @@ export const Proxies: React.FC = () => {
 
   const queryClient = useQueryClient();
 
-  const { data: servers, isLoading, error } = useQuery<ServerWithProxies[]>({
-    queryKey: ['servers'],
-    queryFn: () => api.get('/servers').then(res => res.data),
+  const { data: proxies, isLoading, error } = useQuery<ProxyData[]>({
+    queryKey: ['proxies'],
+    queryFn: () => api.get('/proxies').then(res => res.data),
   });
 
   // Bulk import proxies mutation
@@ -64,7 +64,6 @@ export const Proxies: React.FC = () => {
           username: proxy.username,
           password: proxy.password,
           health: proxy.health || 'unknown',
-          server_id: 0,
           // No server_id - will be unassigned
         })
       );
@@ -143,17 +142,15 @@ export const Proxies: React.FC = () => {
   }
 
   if (error) {
-    return (
-      <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Error loading proxies</div>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-        >
-          Retry
-        </button>
-      </div>
-    );
+  // Calculate total proxies
+  const totalProxies = proxies?.length || 0;
+
+  // Get available servers for import modal (keeping this separate)
+  const { data: servers } = useQuery<ServerWithProxies[]>({
+    queryKey: ['servers'],
+    queryFn: () => api.get('/servers').then(res => res.data),
+  });
+  const availableServers = servers?.map(s => ({ id: s.id, name: s.name })) || [];
   }
 
   return (
@@ -163,7 +160,7 @@ export const Proxies: React.FC = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Proxies</h1>
             <p className="text-gray-600">
-              Manage your proxy connections grouped by server
+              Manage all your proxy connections
               {totalProxies > 0 && (
                 <span className="ml-2 text-sm bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
                   {totalProxies} total proxies
