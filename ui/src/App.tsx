@@ -6,6 +6,9 @@ import { useAuth } from './hooks/useAuth';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { Servers } from './pages/Servers';
+import { Proxies } from './pages/Proxies';
+import { Mappings } from './pages/Mappings';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,33 +43,9 @@ const AppContent: React.FC = () => {
           }
         >
           <Route index element={<Dashboard />} />
-          <Route 
-            path="servers" 
-            element={
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold text-gray-900">Servers</h2>
-                <p className="text-gray-600">Server management coming soon...</p>
-              </div>
-            } 
-          />
-          <Route 
-            path="proxies" 
-            element={
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold text-gray-900">Proxies</h2>
-                <p className="text-gray-600">Proxy management coming soon...</p>
-              </div>
-            } 
-          />
-          <Route 
-            path="mappings" 
-            element={
-              <div className="text-center py-12">
-                <h2 className="text-2xl font-bold text-gray-900">Mappings</h2>
-                <p className="text-gray-600">Mapping management coming soon...</p>
-              </div>
-            } 
-          />
+          <Route path="servers" element={<Servers />} />
+          <Route path="proxies" element={<Proxies />} />
+          <Route path="mappings" element={<Mappings />} />
         </Route>
       </Routes>
     </BrowserRouter>
