@@ -192,28 +192,34 @@ func (h *ServerHandler) DeleteServer(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to start transaction"})
 		return
 	}
+
+	// Ensure we rollback on any panic
 	defer func() {
 		if r := recover(); r != nil {
 			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Transaction failed"})
 		}
 	}()
 
 	// 1. Delete all mappings associated with this server
-	if err := tx.Unscoped().Where("server_id = ?", id).Delete(&models.Mapping{}).Error; err != nil {
+	result := tx.Where("server_id = ?", id).Delete(&models.Mapping{})
+	if result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server mappings"})
 		return
 	}
 
-	// 2. Update proxies to remove server association using raw SQL
-	if err := tx.Exec("UPDATE proxies SET server_id = NULL WHERE server_id = ?", id).Error; err != nil {
+	// 2. Update proxies to remove server association - force explicit SQL
+	result = tx.Exec("UPDATE proxies SET server_id = NULL WHERE server_id = $1", id)
+	if result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign proxies"})
 		return
 	}
 
-	// 3. Delete the server itself using raw SQL to handle constraints
-	if err := tx.Exec("DELETE FROM servers WHERE id = ?", id).Error; err != nil {
+	// 3. Delete the server itself
+	result = tx.Delete(&server)
+	if result.Error != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
 		return
