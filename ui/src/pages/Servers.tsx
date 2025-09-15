@@ -224,8 +224,8 @@ export const Servers: React.FC = () => {
       ) : (
         <div className="space-y-4">
           console.log("All servers:", servers);
-          {servers.filter(server => server.name !== 'Unassigned').map((server) => {
-          console.log("Filtered servers:", servers.filter(server => server.name !== 'Unassigned'));
+          {servers.filter(server => true).map((server) => {
+          console.log("Filtered servers:", servers.filter(server => true));
             const serverTags = parseServerTags(server.tags);
             
             return (
@@ -239,7 +239,7 @@ export const Servers: React.FC = () => {
                       </div>
                       <div>
                         <div className="flex items-center space-x-3">
-                          <h3 className="text-lg font-medium text-gray-900">{server.name}</h3>
+                          <h3 className="text-lg font-medium text-gray-900">{server.name === 'Unassigned' ? '📦 Imported Proxies' : server.name}</h3>
                           <div className="flex items-center space-x-1">
                             <button
                               onClick={() => handleEditServer(server)}
