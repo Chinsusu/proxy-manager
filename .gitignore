@@ -1,0 +1,30 @@
+# Environment
+.env
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Database
+*.sql
+backup/
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# Build artifacts
+api/bin/
+ui/build/
+ui/dist/
+ui/node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
