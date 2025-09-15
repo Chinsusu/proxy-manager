@@ -24,6 +24,8 @@ func main() {
 	authHandler := handlers.NewAuthHandler(db, cfg)
 	adminHandler := handlers.NewAdminHandler(db)
 	serverHandler := handlers.NewServerHandler(db)
+	proxyHandler := handlers.NewProxyHandler(db)
+	mappingHandler := handlers.NewMappingHandler(db)
 	agentHandler := handlers.NewAgentHandler(db)
 
 	// Setup Gin router
@@ -57,12 +59,43 @@ func main() {
 		// Admin with auth
 		protected.GET("/admin/summary", adminHandler.Summary)
 		
-		// Servers
-		protected.GET("/servers", serverHandler.GetServers)
-		protected.POST("/servers", serverHandler.CreateServer)
-		protected.GET("/servers/:id", serverHandler.GetServer)
-		protected.PATCH("/servers/:id", serverHandler.UpdateServer)
-		protected.DELETE("/servers/:id", serverHandler.DeleteServer)
+		// Servers - base CRUD (avoid conflict by putting specific routes first)
+		servers := protected.Group("/servers")
+		{
+			servers.GET("", serverHandler.GetServers)
+			servers.POST("", serverHandler.CreateServer)
+			
+			// Server-specific sub-resources (more specific)
+			servers.GET("/:server_id/proxies", proxyHandler.GetServerProxies)
+			servers.POST("/:server_id/proxies", proxyHandler.CreateServerProxy)
+			servers.GET("/:server_id/mappings", mappingHandler.GetServerMappings)
+			servers.POST("/:server_id/mappings", mappingHandler.CreateServerMapping)
+			
+			// Server CRUD (less specific, put after sub-resources)
+			servers.GET("/:id", serverHandler.GetServer)
+			servers.PATCH("/:id", serverHandler.UpdateServer)
+			servers.DELETE("/:id", serverHandler.DeleteServer)
+		}
+		
+		// Global Proxies
+		proxies := protected.Group("/proxies")
+		{
+			proxies.GET("", proxyHandler.GetProxies)
+			proxies.POST("", proxyHandler.CreateProxy)
+			proxies.GET("/:id", proxyHandler.GetProxy)
+			proxies.PATCH("/:id", proxyHandler.UpdateProxy)
+			proxies.DELETE("/:id", proxyHandler.DeleteProxy)
+		}
+		
+		// Global Mappings
+		mappings := protected.Group("/mappings")
+		{
+			mappings.GET("", mappingHandler.GetMappings)
+			mappings.POST("", mappingHandler.CreateMapping)
+			mappings.GET("/:id", mappingHandler.GetMapping)
+			mappings.PATCH("/:id", mappingHandler.UpdateMapping)
+			mappings.DELETE("/:id", mappingHandler.DeleteMapping)
+		}
 	}
 
 	// Agent routes (agent token auth)
