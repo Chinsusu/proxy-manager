@@ -67,13 +67,13 @@ export const ServerModal: React.FC<ServerModalProps> = ({
       setFormData({
         name: '',
         tags: [],
-        wan_iface: '',
-        lan_iface: '',
+        wan_iface: 'eth0',           // Default WAN Interface
+        lan_iface: 'ens19',          // Default LAN Interface
         status: 'offline',
         // Add SSH fields for new servers
         ssh_host: '',
-        ssh_port: 22,
-        ssh_username: '',
+        ssh_port: 22,                // Default SSH Port
+        ssh_username: 'root',        // Default SSH Username
         ssh_password: ''
       });
       setTagsInput('');
@@ -186,7 +186,7 @@ export const ServerModal: React.FC<ServerModalProps> = ({
                     value={formData.lan_iface}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="e.g., eth1"
+                    placeholder="e.g., ens19"
                   />
                 </div>
               </div>
