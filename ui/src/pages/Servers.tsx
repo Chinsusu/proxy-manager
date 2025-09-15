@@ -127,6 +127,7 @@ export const Servers: React.FC = () => {
   };
 
   const handleDeleteServer = (server: ServerData) => {
+    if (server.id === '0') return; // Cannot delete unassigned server
     setSelectedServer(server);
     setIsDeleteModalOpen(true);
   };
@@ -246,9 +247,14 @@ export const Servers: React.FC = () => {
                               <Edit className="h-4 w-4" />
                             </button>
                             <button
+                              disabled={server.id === '0'}
                               onClick={() => handleDeleteServer(server)}
-                              className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                              title="Delete server"
+                              className={`p-1 transition-colors ${
+                                server.id === '0' 
+                                  ? "text-gray-300 cursor-not-allowed" 
+                                  : "text-gray-400 hover:text-red-600"
+                              }`}
+                              title={server.id === '0' ? "Cannot delete unassigned server" : "Delete server"}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
