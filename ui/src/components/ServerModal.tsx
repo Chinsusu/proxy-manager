@@ -4,7 +4,7 @@ import { X, Server, Terminal } from 'lucide-react';
 interface ServerData {
   id?: string;
   name: string;
-  tags: string[];
+  tags: string[] | string;
   wan_iface: string;
   lan_iface: string;
   status: string;
@@ -43,13 +43,26 @@ export const ServerModal: React.FC<ServerModalProps> = ({
   const [tagsInput, setTagsInput] = useState<string>('');
   const isAddMode = !server;
 
+  const parseServerTags = (tags: any): string[] => {
+    if (typeof tags === 'string') {
+      try {
+        return JSON.parse(tags);
+      } catch {
+        return [];
+      }
+    }
+    return Array.isArray(tags) ? tags : [];
+  };
+
   useEffect(() => {
     if (server) {
+      const parsedTags = parseServerTags(server.tags);
       setFormData({
         ...server,
+        tags: parsedTags
         // Don't include SSH fields for edit mode
       });
-      setTagsInput(server.tags.join(', '));
+      setTagsInput(parsedTags.join(', '));
     } else {
       setFormData({
         name: '',
