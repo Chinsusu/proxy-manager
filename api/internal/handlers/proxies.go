@@ -39,7 +39,7 @@ type UpdateProxyRequest struct {
 
 // GetServerProxies returns all proxies for a specific server
 func (h *ProxyHandler) GetServerProxies(c *gin.Context) {
-	serverID, err := strconv.ParseUint(c.Param("server_id"), 10, 32)
+	serverID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
 		return
@@ -103,7 +103,7 @@ func (h *ProxyHandler) GetProxy(c *gin.Context) {
 
 // CreateServerProxy creates a new proxy for a specific server
 func (h *ProxyHandler) CreateServerProxy(c *gin.Context) {
-	serverID, err := strconv.ParseUint(c.Param("server_id"), 10, 32)
+	serverID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
 		return

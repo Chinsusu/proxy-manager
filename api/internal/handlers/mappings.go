@@ -37,7 +37,7 @@ type UpdateMappingRequest struct {
 
 // GetServerMappings returns all mappings for a specific server
 func (h *MappingHandler) GetServerMappings(c *gin.Context) {
-	serverID, err := strconv.ParseUint(c.Param("server_id"), 10, 32)
+	serverID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
 		return
@@ -101,7 +101,7 @@ func (h *MappingHandler) GetMapping(c *gin.Context) {
 
 // CreateServerMapping creates a new mapping for a specific server
 func (h *MappingHandler) CreateServerMapping(c *gin.Context) {
-	serverID, err := strconv.ParseUint(c.Param("server_id"), 10, 32)
+	serverID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid server ID"})
 		return

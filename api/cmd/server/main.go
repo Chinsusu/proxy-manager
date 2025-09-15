@@ -59,22 +59,20 @@ func main() {
 		// Admin with auth
 		protected.GET("/admin/summary", adminHandler.Summary)
 		
-		// Servers - base CRUD (avoid conflict by putting specific routes first)
+		// Servers - base CRUD
 		servers := protected.Group("/servers")
 		{
 			servers.GET("", serverHandler.GetServers)
 			servers.POST("", serverHandler.CreateServer)
-			
-			// Server-specific sub-resources (more specific)
-			servers.GET("/:server_id/proxies", proxyHandler.GetServerProxies)
-			servers.POST("/:server_id/proxies", proxyHandler.CreateServerProxy)
-			servers.GET("/:server_id/mappings", mappingHandler.GetServerMappings)
-			servers.POST("/:server_id/mappings", mappingHandler.CreateServerMapping)
-			
-			// Server CRUD (less specific, put after sub-resources)
 			servers.GET("/:id", serverHandler.GetServer)
 			servers.PATCH("/:id", serverHandler.UpdateServer)
 			servers.DELETE("/:id", serverHandler.DeleteServer)
+			
+			// Server sub-resources
+			servers.GET("/:id/proxies", proxyHandler.GetServerProxies)
+			servers.POST("/:id/proxies", proxyHandler.CreateServerProxy)
+			servers.GET("/:id/mappings", mappingHandler.GetServerMappings)
+			servers.POST("/:id/mappings", mappingHandler.CreateServerMapping)
 		}
 		
 		// Global Proxies
