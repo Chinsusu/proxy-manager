@@ -65,7 +65,7 @@ export const Servers: React.FC = () => {
   // Update server mutation
   const updateServerMutation = useMutation({
     mutationFn: ({ id, ...serverData }: { id: string } & Partial<ServerData>) =>
-      api.put(`/servers/${id}`, serverData),
+      api.patch(`/servers/${id}`, serverData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['servers'] });
       setIsEditModalOpen(false);
