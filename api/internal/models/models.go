@@ -37,7 +37,7 @@ type Server struct {
 // Proxy represents upstream proxy server
 type Proxy struct {
 	ID         uint      `json:"id" gorm:"primarykey"`
-	ServerID   uint      `json:"server_id" gorm:"not null"`
+	ServerID   *uint     `json:"server_id"`
 	Label      string    `json:"label" gorm:"not null"`
 	Type       string    `json:"type" gorm:"not null"` // http, socks5, etc.
 	Host       string    `json:"host" gorm:"not null"`

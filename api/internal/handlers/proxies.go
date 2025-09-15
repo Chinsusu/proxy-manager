@@ -18,7 +18,7 @@ func NewProxyHandler(db *database.DB) *ProxyHandler {
 }
 
 type CreateProxyRequest struct {
-	ServerID uint   `json:"server_id"`
+	ServerID *uint  `json:"server_id,omitempty"`
 	Label    string `json:"label" binding:"required"`
 	Type     string `json:"type" binding:"required"`
 	Host     string `json:"host" binding:"required"`
@@ -116,7 +116,7 @@ func (h *ProxyHandler) CreateServerProxy(c *gin.Context) {
 	}
 
 	// Override server ID from URL param
-	req.ServerID = uint(serverID)
+	serverIdUint := uint(serverID); req.ServerID = &serverIdUint
 
 	// Verify server exists
 	var server models.Server
@@ -149,7 +149,7 @@ func (h *ProxyHandler) CreateServerProxy(c *gin.Context) {
 	}
 
 	// Increment config version for the server
-	h.db.IncrementConfigVersion(req.ServerID)
+	if req.ServerID != nil && *req.ServerID > 0 { h.db.IncrementConfigVersion(*req.ServerID) }
 
 	// Reload proxy with server info
 	h.db.Preload("Server").First(&proxy, proxy.ID)
@@ -166,9 +166,9 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 
 
 	// Verify server exists (if server_id > 0)
-	if false {
+	if req.ServerID != nil && *req.ServerID > 0 {
 		var server models.Server
-		if err := h.db.First(&server, req.ServerID).Error; err != nil {
+		if err := h.db.First(&server, *req.ServerID).Error; err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
 			return
 		}
@@ -198,7 +198,7 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 	}
 
 	// Increment config version for the server
-	h.db.IncrementConfigVersion(req.ServerID)
+	if req.ServerID != nil && *req.ServerID > 0 { h.db.IncrementConfigVersion(*req.ServerID) }
 
 	// Reload proxy with server info
 	h.db.Preload("Server").First(&proxy, proxy.ID)
@@ -269,7 +269,7 @@ func (h *ProxyHandler) UpdateProxy(c *gin.Context) {
 	}
 
 	// Increment config version for the server
-	h.db.IncrementConfigVersion(proxy.ServerID)
+	if proxy.ServerID != nil && *proxy.ServerID > 0 { h.db.IncrementConfigVersion(*proxy.ServerID) }
 
 	// Reload proxy with updated data
 	h.db.Preload("Server").First(&proxy, id)
@@ -298,7 +298,7 @@ func (h *ProxyHandler) DeleteProxy(c *gin.Context) {
 	}
 
 	// Increment config version for the server
-	h.db.IncrementConfigVersion(serverID)
+	if serverID != nil && *serverID > 0 { h.db.IncrementConfigVersion(*serverID) }
 
 	c.JSON(http.StatusOK, gin.H{"message": "Proxy deleted successfully"})
 }
