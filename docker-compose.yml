@@ -42,7 +42,7 @@ services:
       - "${NGINX_LISTEN}:8080"
     volumes:
       - ./nginx/proxy-manager.conf:/etc/nginx/conf.d/default.conf:ro
-      - ui_build:/usr/share/nginx/html:ro
+      - ./ui/build:/usr/share/nginx/html:ro
     environment:
       TZ: ${TZ}
 
