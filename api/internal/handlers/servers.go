@@ -199,21 +199,21 @@ func (h *ServerHandler) DeleteServer(c *gin.Context) {
 	}()
 
 	// 1. Delete all mappings associated with this server
-	if err := tx.Where("server_id = ?", id).Delete(&models.Mapping{}).Error; err != nil {
+	if err := tx.Unscoped().Where("server_id = ?", id).Delete(&models.Mapping{}).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server mappings"})
 		return
 	}
 
-	// 2. Unassign all proxies from this server (set server_id to 0 instead of nil)
-	if err := tx.Model(&models.Proxy{}).Where("server_id = ?", id).Update("server_id", 0).Error; err != nil {
+	// 2. Update proxies to remove server association using raw SQL
+	if err := tx.Exec("UPDATE proxies SET server_id = NULL WHERE server_id = ?", id).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to unassign proxies"})
 		return
 	}
 
-	// 3. Delete the server itself
-	if err := tx.Delete(&server).Error; err != nil {
+	// 3. Delete the server itself using raw SQL to handle constraints
+	if err := tx.Exec("DELETE FROM servers WHERE id = ?", id).Error; err != nil {
 		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete server"})
 		return
