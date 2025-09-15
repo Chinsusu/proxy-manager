@@ -63,7 +63,8 @@ export const Proxies: React.FC = () => {
           port: proxy.port,
           username: proxy.username,
           password: proxy.password,
-          health: proxy.health || 'unknown'
+          health: proxy.health || 'unknown',
+          server_id: 0,
           // No server_id - will be unassigned
         })
       );

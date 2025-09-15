@@ -18,7 +18,7 @@ func NewProxyHandler(db *database.DB) *ProxyHandler {
 }
 
 type CreateProxyRequest struct {
-	ServerID uint   `json:"server_id" binding:"required"`
+	ServerID uint   `json:"server_id"`
 	Label    string `json:"label" binding:"required"`
 	Type     string `json:"type" binding:"required"`
 	Host     string `json:"host" binding:"required"`
@@ -164,11 +164,14 @@ func (h *ProxyHandler) CreateProxy(c *gin.Context) {
 		return
 	}
 
-	// Verify server exists
-	var server models.Server
-	if err := h.db.First(&server, req.ServerID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
-		return
+
+	// Verify server exists (if server_id > 0)
+	if req.ServerID > 0 {
+		var server models.Server
+		if err := h.db.First(&server, req.ServerID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Server not found"})
+			return
+		}
 	}
 
 	// Validate proxy type
