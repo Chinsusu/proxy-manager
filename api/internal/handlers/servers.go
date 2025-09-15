@@ -45,6 +45,25 @@ func (h *ServerHandler) GetServers(c *gin.Context) {
 		return
 	}
 
+
+	// Get unassigned proxies
+	var unassignedProxies []models.Proxy
+	h.db.Where("server_id IS NULL").Find(&unassignedProxies)
+
+
+	// Add virtual "Unassigned" server if there are unassigned proxies
+	if len(unassignedProxies) > 0 {
+		virtualServer := models.Server{
+			ID:       999999, // Virtual ID
+			Name:     "📦 Imported Proxies",
+			Status:   "unassigned",
+			Proxies:  unassignedProxies,
+			Mappings: []models.Mapping{}, // Empty mappings
+		}
+		servers = append(servers, virtualServer)
+	}
+
+
 	c.JSON(http.StatusOK, servers)
 }
 
