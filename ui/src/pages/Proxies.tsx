@@ -9,6 +9,7 @@ import { DeleteProxyButton } from '../components/DeleteProxyButton';
 import { BulkDeleteProxyButton } from '../components/BulkDeleteProxyButton';
 import { GroupManagement } from '../components/GroupManagement';
 import { MoveProxyButton } from '../components/MoveProxyButton';
+import { BulkMoveProxyButton } from '../components/BulkMoveProxyButton';
 
 
 interface ProxyGroup {
@@ -156,6 +157,12 @@ export const Proxies: React.FC = () => {
     setSelectedProxies(newSelected);
   };
 
+  // Get available groups from cache for bulk operations
+  const getAvailableGroups = () => {
+    const groups = queryClient.getQueryData<any[]>(['groups']) || [];
+    return groups.length > 0 ? groups : [{id: '1', name: 'Default', color: '#3B82F6'}];
+  };
+
   const clearSelection = () => {
     setSelectedProxies(new Set());
   };
@@ -234,6 +241,11 @@ export const Proxies: React.FC = () => {
           <div className="flex items-center space-x-3">
             <BulkDeleteProxyButton
               selectedProxyIds={Array.from(selectedProxies)}
+              onClearSelection={clearSelection}
+            />
+            <BulkMoveProxyButton
+              selectedProxyIds={Array.from(selectedProxies)}
+              availableGroups={getAvailableGroups()}
               onClearSelection={clearSelection}
             />
             <button
@@ -402,7 +414,7 @@ export const Proxies: React.FC = () => {
                               proxyId={proxy.id}
                               proxyLabel={proxy.label}
                               currentGroupId={proxy.group_id}
-                              availableGroups={[{id: '1', name: 'Default', color: '#3B82F6'}]}
+                              availableGroups={getAvailableGroups()}
                             />
                             <DeleteProxyButton
                               proxyId={proxy.id}

@@ -26,9 +26,8 @@ export const MoveProxyButton: React.FC<MoveProxyButtonProps> = ({
 
   const moveProxyMutation = useMutation({
     mutationFn: async ({ proxyId, groupId }: { proxyId: string; groupId: string }) => {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return { proxyId, groupId };
+      // Mock API call - replace with real API
+      return api.put(`/proxies/${proxyId}`, { group_id: groupId || null });
     },
     onSuccess: () => {
       toast.success('Proxy moved successfully');
