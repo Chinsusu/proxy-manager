@@ -51,3 +51,136 @@ Authentication: `Authorization: Bearer <JWT>` (trừ /auth/*)
 - 403: Forbidden - `{ "error": "Insufficient permissions" }`
 - 404: Not Found - `{ "error": "Resource not found" }`
 - 500: Server Error - `{ "error": "Internal server error" }`
+
+## 6. Groups
+
+### 6.1 List Groups
+```http
+GET /api/v1/groups
+Authorization: Bearer <token>
+```
+
+**Response**
+```json
+200 OK
+[
+  {
+    "id": 1,
+    "name": "Production",
+    "description": "Production proxy servers",
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-01T00:00:00Z",
+    "proxies": [...]
+  }
+]
+```
+
+### 6.2 Create Group
+```http
+POST /api/v1/groups
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Development",
+  "description": "Development environment proxies"
+}
+```
+
+**Response**
+```json
+201 Created
+{
+  "id": 2,
+  "name": "Development",
+  "description": "Development environment proxies",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+### 6.3 Update Group
+```http
+PUT /api/v1/groups/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Development Updated",
+  "description": "Updated description"
+}
+```
+
+**Response**
+```json
+200 OK
+{
+  "id": 2,
+  "name": "Development Updated",
+  "description": "Updated description",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:01:00Z"
+}
+```
+
+### 6.4 Delete Group
+```http
+DELETE /api/v1/groups/{id}
+Authorization: Bearer <token>
+```
+
+**Response**
+```json
+200 OK
+{
+  "message": "Group deleted successfully"
+}
+
+400 Bad Request (if group has proxies)
+{
+  "error": "Cannot delete group with proxies. Move proxies to another group first."
+}
+```
+
+### 6.5 Move Proxy to Group
+```http
+PUT /api/v1/proxies/{id}/group
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "group_id": 5
+}
+```
+
+**Response**
+```json
+200 OK
+{
+  "id": 123,
+  "label": "Proxy-1",
+  "group_id": 5,
+  // ... other proxy fields
+}
+```
+
+### 6.6 Bulk Move Proxies
+```http
+PUT /api/v1/proxies/bulk-move
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "proxy_ids": [1, 2, 3, 4, 5],
+  "group_id": 3
+}
+```
+
+**Response**
+```json
+200 OK
+{
+  "message": "Proxies moved successfully",
+  "moved_count": 5
+}
+```
