@@ -1,67 +1,53 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, X, Users } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { ArrowRightLeft } from 'lucide-react';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
+import { api } from '../lib/api';
 
 interface BulkMoveProxyButtonProps {
-  selectedProxyIds: string[];
-  availableGroups: Array<{ id: string; name: string; color?: string; }>;
-  onClearSelection: () => void;
-  className?: string;
+  selectedProxyIds: number[];
+  availableGroups?: { id: number; name: string }[];
 }
 
-export const BulkMoveProxyButton: React.FC<BulkMoveProxyButtonProps> = ({
-  selectedProxyIds,
-  availableGroups,
-  onClearSelection,
-  className = "inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-colors"
-}) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
-
+export function BulkMoveProxyButton({ selectedProxyIds, availableGroups = [] }: BulkMoveProxyButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const queryClient = useQueryClient();
 
-  const bulkMoveProxyMutation = useMutation({
-    mutationFn: async ({ proxyIds, groupId }: { proxyIds: string[]; groupId: string }) => {
-      // Simulate API delay for bulk operation
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Simulate API calls for each proxy
-      const movePromises = proxyIds.map(proxyId => ({
-        proxyId,
-        groupId,
-        success: true
-      }));
-      
-      return movePromises;
-    },
-    onSuccess: (results) => {
-      toast.success(`Successfully moved ${results.length} proxy(ies) to group`);
-      queryClient.invalidateQueries({ queryKey: ['servers'] });
-      onClearSelection();
-      setIsModalOpen(false);
-    },
-    onError: (error: any) => {
-      toast.error('Failed to move some proxies');
-    },
+  // Fetch groups if not provided
+  const { data: groups = [] } = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => api.get('/groups').then(res => res.data),
+    enabled: availableGroups.length === 0
   });
 
-  const handleBulkMove = () => {
-    if (selectedProxyIds.length === 0) return;
-    if (!selectedGroupId) {
-      toast.error('Please select a target group');
-      return;
+  const finalGroups = availableGroups.length > 0 ? availableGroups : groups;
+
+  const bulkMoveProxyMutation = useMutation({
+    mutationFn: ({ proxyIds, groupId }: { proxyIds: number[]; groupId: number | null }) =>
+      api.put('/proxies/bulk-move', { proxy_ids: proxyIds, group_id: groupId }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['proxies'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      setSelectedGroupId('');
+      setIsOpen(false);
+      const movedCount = response.data?.moved_count || selectedProxyIds.length;
+      toast.success(`Successfully moved ${movedCount} proxies`);
+    },
+    onError: (error: any) => {
+      console.error('Bulk move error:', error);
+      toast.error(`Failed to move proxies: ${error.response?.data?.error || error.message}`);
     }
+  });
 
-    bulkMoveProxyMutation.mutate({ 
-      proxyIds: selectedProxyIds, 
-      groupId: selectedGroupId 
+  const handleBulkMoveProxies = () => {
+    if (selectedGroupId === '' || selectedProxyIds.length === 0) return;
+    
+    const groupId = selectedGroupId === 'null' ? null : parseInt(selectedGroupId);
+    bulkMoveProxyMutation.mutate({
+      proxyIds: selectedProxyIds,
+      groupId: groupId
     });
-  };
-
-  const getSelectedGroupName = () => {
-    const group = availableGroups.find(g => g.id === selectedGroupId);
-    return group?.name || 'No Group';
   };
 
   if (selectedProxyIds.length === 0) {
@@ -71,87 +57,58 @@ export const BulkMoveProxyButton: React.FC<BulkMoveProxyButtonProps> = ({
   return (
     <>
       <button
-        onClick={() => setIsModalOpen(true)}
-        className={className}
+        onClick={() => setIsOpen(true)}
+        className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
       >
-        <ArrowRight className="h-4 w-4 mr-2" />
-        {bulkMoveProxyMutation.isPending 
-          ? `Moving ${selectedProxyIds.length}...` 
-          : `Move ${selectedProxyIds.length} to Group`
-        }
+        <ArrowRightLeft className="w-4 h-4" />
+        Bulk Move ({selectedProxyIds.length})
       </button>
 
       {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">
-                Bulk Move Proxies to Group
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
-              </button>
+      {isOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-96 max-w-90vw">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold">Move {selectedProxyIds.length} Proxies to Group</h3>
             </div>
-
+            
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Selected Proxies
-                </label>
-                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-md text-sm text-gray-900">
-                  <div className="flex items-center">
-                    <Users className="h-4 w-4 mr-2 text-gray-500" />
-                    {selectedProxyIds.length} proxy(ies) selected
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Group
-                </label>
+                <label className="block text-sm font-medium mb-2">Select target group:</label>
                 <select
                   value={selectedGroupId}
                   onChange={(e) => setSelectedGroupId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
                 >
-                  <option value="">Select a group...</option>
-                  {availableGroups.map(group => (
-                    <option key={group.id} value={group.id}>
+                  <option value="">Select group</option>
+                  <option value="null">No Group</option>
+                  {finalGroups.map((group: any) => (
+                    <option key={group.id} value={group.id.toString()}>
                       {group.name}
                     </option>
                   ))}
                 </select>
               </div>
-
-              {selectedGroupId && (
-                <div className="bg-purple-50 border border-purple-200 rounded-md p-3">
-                  <p className="text-sm text-purple-800">
-                    <strong>Moving:</strong> {selectedProxyIds.length} proxy(ies) to "{getSelectedGroupName()}"
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end space-x-3 pt-6">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleBulkMove}
-                disabled={bulkMoveProxyMutation.isPending || !selectedGroupId}
-                className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors"
-              >
-                {bulkMoveProxyMutation.isPending ? 'Moving...' : `Move ${selectedProxyIds.length} Proxies`}
-              </button>
+              
+              <div className="flex justify-end gap-2">
+                <button 
+                  onClick={() => setIsOpen(false)}
+                  className="px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleBulkMoveProxies}
+                  disabled={selectedGroupId === '' || bulkMoveProxyMutation.isPending}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkMoveProxyMutation.isPending ? 'Moving...' : `Move ${selectedProxyIds.length} Proxies`}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
     </>
   );
-};
+}

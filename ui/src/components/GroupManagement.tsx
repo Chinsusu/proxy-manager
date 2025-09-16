@@ -1,194 +1,111 @@
 import React, { useState } from 'react';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, Users, Palette, X } from 'lucide-react';
 import { api } from '../lib/api';
-import toast from 'react-hot-toast';
+import { Edit, Trash2, Plus } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 
-interface ProxyGroup {
-  id: string;
+export interface ProxyGroup {
+  id: number;
   name: string;
-  description?: string;
-  color?: string;
+  description: string;
   created_at: string;
   updated_at: string;
+  proxies?: any[];
 }
 
-interface GroupManagementProps {
-  onGroupCreate?: (group: ProxyGroup) => void;
-  onGroupUpdate?: (group: ProxyGroup) => void;
-  onGroupDelete?: (groupId: string) => void;
-}
-
-const GROUP_COLORS = [
-  '#3B82F6', // blue
-  '#10B981', // green  
-  '#F59E0B', // yellow
-  '#EF4444', // red
-  '#8B5CF6', // purple
-  '#F97316', // orange
-  '#06B6D4', // cyan
-  '#84CC16', // lime
-];
-
-// Initial default groups
-const INITIAL_GROUPS: ProxyGroup[] = [
-  {
-    id: '1',
-    name: 'Default',
-    description: 'Default proxy group',
-    color: '#3B82F6',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  }
-];
-
-export const GroupManagement: React.FC<GroupManagementProps> = ({
-  onGroupCreate,
-  onGroupUpdate, 
-  onGroupDelete
-}) => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingGroup, setEditingGroup] = useState<ProxyGroup | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    color: GROUP_COLORS[0]
-  });
-
+export function GroupManagement() {
+  const [isCreating, setIsCreating] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupDescription, setNewGroupDescription] = useState('');
+  const [editGroupName, setEditGroupName] = useState('');
+  const [editGroupDescription, setEditGroupDescription] = useState('');
+  
   const queryClient = useQueryClient();
 
-  // Fetch groups with proper caching
-  const { data: groups = INITIAL_GROUPS, isLoading } = useQuery<ProxyGroup[]>({
+  // Fetch groups
+  const { data: groups = [], isLoading } = useQuery({
     queryKey: ['groups'],
-    queryFn: async () => {
-      // Check if we have cached data first
-      const cachedGroups = queryClient.getQueryData<ProxyGroup[]>(['groups']);
-      if (cachedGroups && cachedGroups.length > 0) {
-        return cachedGroups;
-      }
-      // Return initial groups if no cache
-      return INITIAL_GROUPS;
-    },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    queryFn: () => api.get('/groups').then(res => res.data)
   });
 
+  // Create group mutation
   const createGroupMutation = useMutation({
-    mutationFn: async (groupData: Omit<ProxyGroup, 'id' | 'created_at' | 'updated_at'>) => {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      const newGroup: ProxyGroup = {
-        id: Date.now().toString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        ...groupData
-      };
-      return newGroup;
-    },
-    onSuccess: (newGroup) => {
-      // Update cache with new group
-      const currentGroups = queryClient.getQueryData<ProxyGroup[]>(['groups']) || [];
-      queryClient.setQueryData(['groups'], [...currentGroups, newGroup]);
-      
+    mutationFn: (groupData: { name: string; description: string }) =>
+      api.post('/groups', groupData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      setIsCreating(false);
+      setNewGroupName('');
+      setNewGroupDescription('');
       toast.success('Group created successfully');
-      onGroupCreate?.(newGroup);
-      closeModal();
     },
     onError: () => {
       toast.error('Failed to create group');
     }
   });
 
+  // Update group mutation
   const updateGroupMutation = useMutation({
-    mutationFn: async (groupData: ProxyGroup) => {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      return { ...groupData, updated_at: new Date().toISOString() };
-    },
-    onSuccess: (updatedGroup) => {
-      // Update cache with updated group
-      const currentGroups = queryClient.getQueryData<ProxyGroup[]>(['groups']) || [];
-      const newGroups = currentGroups.map(group => 
-        group.id === updatedGroup.id ? updatedGroup : group
-      );
-      queryClient.setQueryData(['groups'], newGroups);
-      
+    mutationFn: ({ id, ...groupData }: { id: number; name: string; description: string }) =>
+      api.put(`/groups/${id}`, groupData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+      setEditingId(null);
       toast.success('Group updated successfully');
-      onGroupUpdate?.(updatedGroup);
-      closeModal();
     },
     onError: () => {
       toast.error('Failed to update group');
     }
   });
 
+  // Delete group mutation
   const deleteGroupMutation = useMutation({
-    mutationFn: async (groupId: string) => {
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      return groupId;
-    },
-    onSuccess: (groupId) => {
-      // Remove group from cache
-      const currentGroups = queryClient.getQueryData<ProxyGroup[]>(['groups']) || [];
-      const newGroups = currentGroups.filter(group => group.id !== groupId);
-      queryClient.setQueryData(['groups'], newGroups);
-      
+    mutationFn: (id: number) => api.delete(`/groups/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
       toast.success('Group deleted successfully');
-      onGroupDelete?.(groupId);
     },
     onError: () => {
       toast.error('Failed to delete group');
     }
   });
 
-  const openModal = (group?: ProxyGroup) => {
-    if (group) {
-      setEditingGroup(group);
-      setFormData({
-        name: group.name,
-        description: group.description || '',
-        color: group.color || GROUP_COLORS[0]
-      });
-    } else {
-      setEditingGroup(null);
-      setFormData({
-        name: '',
-        description: '',
-        color: GROUP_COLORS[0]
+  const handleCreateGroup = () => {
+    if (newGroupName.trim()) {
+      createGroupMutation.mutate({
+        name: newGroupName.trim(),
+        description: newGroupDescription.trim()
       });
     }
-    setIsModalOpen(true);
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingGroup(null);
-    setFormData({ name: '', description: '', color: GROUP_COLORS[0] });
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      toast.error('Group name is required');
-      return;
-    }
-
-    if (editingGroup) {
+  const handleUpdateGroup = (id: number) => {
+    if (editGroupName.trim()) {
       updateGroupMutation.mutate({
-        ...editingGroup,
-        ...formData
+        id,
+        name: editGroupName.trim(),
+        description: editGroupDescription.trim()
       });
-    } else {
-      createGroupMutation.mutate(formData);
     }
   };
 
-  const handleDelete = (group: ProxyGroup) => {
-    if (window.confirm(`Are you sure you want to delete group "${group.name}"? This will ungroup all proxies in this group.`)) {
-      deleteGroupMutation.mutate(group.id);
+  const handleDeleteGroup = (id: number) => {
+    if (window.confirm('Are you sure you want to delete this group?')) {
+      deleteGroupMutation.mutate(id);
     }
+  };
+
+  const startEditing = (group: ProxyGroup) => {
+    setEditingId(group.id);
+    setEditGroupName(group.name);
+    setEditGroupDescription(group.description || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditGroupName('');
+    setEditGroupDescription('');
   };
 
   if (isLoading) {
@@ -196,160 +113,132 @@ export const GroupManagement: React.FC<GroupManagementProps> = ({
   }
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center space-x-2">
-          <Users className="h-5 w-5 text-gray-600" />
-          <h2 className="text-lg font-medium text-gray-900">Proxy Groups</h2>
-          <span className="text-sm text-gray-500">({groups.length})</span>
-        </div>
-        <button
-          onClick={() => openModal()}
-          className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-3 w-3 mr-1" />
-          New Group
-        </button>
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold">Proxy Groups</h3>
+        <p className="text-gray-600">Manage proxy groups</p>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {groups.map((group) => (
-          <div key={group.id} className="bg-white border rounded-lg p-4 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: group.color || '#3B82F6' }}
-                />
-                <h3 className="font-medium text-gray-900">{group.name}</h3>
-              </div>
-              <div className="flex items-center space-x-1">
-                <button
-                  onClick={() => openModal(group)}
-                  className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                  title="Edit group"
+      
+      <div className="space-y-4">
+        {/* Create new group form */}
+        {isCreating ? (
+          <div className="p-4 border rounded-lg bg-gray-50">
+            <div className="space-y-3">
+              <input
+                type="text"
+                placeholder="Group name"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+              />
+              <textarea
+                placeholder="Group description (optional)"
+                value={newGroupDescription}
+                onChange={(e) => setNewGroupDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md"
+                rows={3}
+              />
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleCreateGroup}
+                  disabled={!newGroupName.trim() || createGroupMutation.isPending}
+                  className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
                 >
-                  <Edit2 className="h-3 w-3" />
+                  {createGroupMutation.isPending ? 'Creating...' : 'Create'}
                 </button>
-                {group.name !== 'Default' && (
-                  <button
-                    onClick={() => handleDelete(group)}
-                    className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                    title="Delete group"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-            {group.description && (
-              <p className="text-xs text-gray-500 mb-2">{group.description}</p>
-            )}
-            <div className="text-xs text-gray-400">
-              Created: {new Date(group.created_at).toLocaleDateString()}
-            </div>
-            <div className="text-xs text-gray-400">
-              Updated: {new Date(group.updated_at).toLocaleDateString()}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Loading States */}
-      {(createGroupMutation.isPending || updateGroupMutation.isPending || deleteGroupMutation.isPending) && (
-        <div className="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded shadow-lg">
-          Processing...
-        </div>
-      )}
-
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-medium text-gray-900">
-                {editingGroup ? 'Edit Group' : 'Create New Group'}
-              </h3>
-              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Group Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter group name"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Description (optional)
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter group description"
-                  rows={3}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Palette className="inline h-4 w-4 mr-1" />
-                  Color
-                </label>
-                <div className="flex space-x-2">
-                  {GROUP_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, color })}
-                      className={`w-8 h-8 rounded-full border-2 transition-all ${
-                        formData.color === color ? 'border-gray-600 scale-110' : 'border-transparent hover:scale-105'
-                      }`}
-                      style={{ backgroundColor: color }}
-                      title={`Select ${color}`}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 text-xs text-gray-500">
-                  Selected: {formData.color}
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                <button 
+                  onClick={() => {
+                    setIsCreating(false);
+                    setNewGroupName('');
+                    setNewGroupDescription('');
+                  }}
+                  className="px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={createGroupMutation.isPending || updateGroupMutation.isPending}
-                  className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors"
-                >
-                  {(createGroupMutation.isPending || updateGroupMutation.isPending) 
-                    ? 'Processing...' 
-                    : editingGroup ? 'Update' : 'Create'
-                  } Group
-                </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" />
+            New Group
+          </button>
+        )}
+
+        {/* Groups list */}
+        {groups.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No groups found. Create your first group!</p>
+        ) : (
+          <div className="space-y-2">
+            {groups.map((group: ProxyGroup) => (
+              <div key={group.id} className="p-3 border rounded-lg">
+                {editingId === group.id ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={editGroupName}
+                      onChange={(e) => setEditGroupName(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md"
+                    />
+                    <textarea
+                      value={editGroupDescription}
+                      onChange={(e) => setEditGroupDescription(e.target.value)}
+                      className="w-full px-3 py-2 border rounded-md"
+                      rows={3}
+                    />
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => handleUpdateGroup(group.id)}
+                        disabled={!editGroupName.trim() || updateGroupMutation.isPending}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {updateGroupMutation.isPending ? 'Saving...' : 'Save'}
+                      </button>
+                      <button 
+                        onClick={cancelEditing}
+                        className="px-3 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">{group.name}</h4>
+                      {group.description && (
+                        <p className="text-sm text-gray-600">{group.description}</p>
+                      )}
+                      <p className="text-xs text-gray-400">
+                        {group.proxies?.length || 0} proxies
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => startEditing(group)}
+                        className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-md"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGroup(group.id)}
+                        disabled={deleteGroupMutation.isPending}
+                        className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
-};
+}

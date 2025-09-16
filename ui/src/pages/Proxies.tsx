@@ -244,9 +244,9 @@ export const Proxies: React.FC = () => {
               onClearSelection={clearSelection}
             />
             <BulkMoveProxyButton
-              selectedProxyIds={Array.from(selectedProxies)}
+              selectedProxyIds={Array.from(selectedProxies).map(id => parseInt(id))}
               availableGroups={getAvailableGroups()}
-              onClearSelection={clearSelection}
+              
             />
             <button
               onClick={() => setIsImportModalOpen(true)}
@@ -268,11 +268,7 @@ export const Proxies: React.FC = () => {
 
       {/* Group Management Section */}
       {showGroupView && (
-        <GroupManagement
-          onGroupCreate={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
-          onGroupUpdate={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
-          onGroupDelete={() => queryClient.invalidateQueries({ queryKey: ['servers'] })}
-        />
+        <GroupManagement />
       )}
 
       {serversWithProxies.length === 0 ? (
@@ -411,9 +407,7 @@ export const Proxies: React.FC = () => {
                               {proxy.health}
                             </span>
                             <MoveProxyButton
-                              proxyId={proxy.id}
-                              proxyLabel={proxy.label}
-                              currentGroupId={proxy.group_id}
+                              proxy={proxy}
                               availableGroups={getAvailableGroups()}
                             />
                             <DeleteProxyButton

@@ -302,3 +302,118 @@ func (h *ProxyHandler) DeleteProxy(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Proxy deleted successfully"})
 }
+
+// MoveProxyRequest for moving single proxy to group
+type MoveProxyRequest struct {
+	GroupID *uint `json:"group_id"`
+}
+
+// BulkMoveProxyRequest for moving multiple proxies to group
+type BulkMoveProxyRequest struct {
+	ProxyIDs []uint `json:"proxy_ids" binding:"required"`
+	GroupID  *uint  `json:"group_id"`
+}
+
+// MoveProxyToGroup moves a proxy to a specific group
+func (h *ProxyHandler) MoveProxyToGroup(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid proxy ID"})
+		return
+	}
+
+	var req MoveProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "details": err.Error()})
+		return
+	}
+
+	// Check if proxy exists
+	var proxy models.Proxy
+	if err := h.db.First(&proxy, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Proxy not found"})
+		return
+	}
+
+	// Check if group exists (if group_id is provided)
+	if req.GroupID != nil && *req.GroupID > 0 {
+		var group models.ProxyGroup
+		if err := h.db.First(&group, *req.GroupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+	}
+
+	// Update proxy's group_id
+	if err := h.db.Model(&proxy).Update("group_id", req.GroupID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move proxy"})
+		return
+	}
+
+	// Increment config version for the server
+	if proxy.ServerID != nil && *proxy.ServerID > 0 {
+		h.db.IncrementConfigVersion(*proxy.ServerID)
+	}
+
+	// Reload proxy with updated data
+	h.db.Preload("Server").Preload("Group").First(&proxy, id)
+	c.JSON(http.StatusOK, proxy)
+}
+
+// BulkMoveProxiesToGroup moves multiple proxies to a specific group
+func (h *ProxyHandler) BulkMoveProxiesToGroup(c *gin.Context) {
+	var req BulkMoveProxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "details": err.Error()})
+		return
+	}
+
+	if len(req.ProxyIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No proxy IDs provided"})
+		return
+	}
+
+	// Check if group exists (if group_id is provided)
+	if req.GroupID != nil && *req.GroupID > 0 {
+		var group models.ProxyGroup
+		if err := h.db.First(&group, *req.GroupID).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+			return
+		}
+	}
+
+	// Get all proxies to be moved
+	var proxies []models.Proxy
+	if err := h.db.Where("id IN ?", req.ProxyIDs).Find(&proxies).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find proxies"})
+		return
+	}
+
+	if len(proxies) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "No proxies found with provided IDs"})
+		return
+	}
+
+	// Update all proxies' group_id in bulk
+	if err := h.db.Model(&models.Proxy{}).Where("id IN ?", req.ProxyIDs).Update("group_id", req.GroupID).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move proxies"})
+		return
+	}
+
+	// Increment config version for all affected servers
+	serverIDs := make(map[uint]bool)
+	for _, proxy := range proxies {
+		if proxy.ServerID != nil && *proxy.ServerID > 0 {
+			serverIDs[*proxy.ServerID] = true
+		}
+	}
+	
+	for serverID := range serverIDs {
+		h.db.IncrementConfigVersion(serverID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Proxies moved successfully",
+		"moved_count": len(proxies),
+	})
+}

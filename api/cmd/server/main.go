@@ -27,6 +27,7 @@ func main() {
 	proxyHandler := handlers.NewProxyHandler(db)
 	mappingHandler := handlers.NewMappingHandler(db)
 	agentHandler := handlers.NewAgentHandler(db)
+	groupHandler := handlers.NewGroupHandler(db)
 
 	// Setup Gin router
 	gin.SetMode(gin.ReleaseMode)
@@ -59,6 +60,15 @@ func main() {
 		// Admin with auth
 		protected.GET("/admin/summary", adminHandler.Summary)
 		
+		// Groups - CRUD operations
+		groups := protected.Group("/groups")
+		{
+			groups.GET("", groupHandler.GetGroups)
+			groups.POST("", groupHandler.CreateGroup)
+			groups.PUT("/:id", groupHandler.UpdateGroup)
+			groups.DELETE("/:id", groupHandler.DeleteGroup)
+		}
+		
 		// Servers - base CRUD
 		servers := protected.Group("/servers")
 		{
@@ -83,6 +93,10 @@ func main() {
 			proxies.GET("/:id", proxyHandler.GetProxy)
 			proxies.PATCH("/:id", proxyHandler.UpdateProxy)
 			proxies.DELETE("/:id", proxyHandler.DeleteProxy)
+			
+			// Move proxy endpoints
+			proxies.PUT("/:id/group", proxyHandler.MoveProxyToGroup)
+			proxies.PUT("/bulk-move", proxyHandler.BulkMoveProxiesToGroup)
 		}
 		
 		// Global Mappings

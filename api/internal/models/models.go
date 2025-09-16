@@ -15,6 +15,18 @@ type User struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+// ProxyGroup represents a group of proxies
+type ProxyGroup struct {
+	ID          uint      `json:"id" gorm:"primarykey"`
+	Name        string    `json:"name" gorm:"not null;uniqueIndex"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	
+	// Relationships
+	Proxies []Proxy `json:"proxies,omitempty" gorm:"foreignKey:GroupID"`
+}
+
 // Server represents a proxy server node/agent
 type Server struct {
 	ID           uint      `json:"id" gorm:"primarykey"`
@@ -38,6 +50,7 @@ type Server struct {
 type Proxy struct {
 	ID         uint      `json:"id" gorm:"primarykey"`
 	ServerID   *uint     `json:"server_id"`
+	GroupID    *uint     `json:"group_id"`
 	Label      string    `json:"label" gorm:"not null"`
 	Type       string    `json:"type" gorm:"not null"` // http, socks5, etc.
 	Host       string    `json:"host" gorm:"not null"`
@@ -49,8 +62,9 @@ type Proxy struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 	
 	// Relationships
-	Server   Server    `json:"server,omitempty"`
-	Mappings []Mapping `json:"mappings,omitempty" gorm:"foreignKey:UpstreamProxyID"`
+	Server   Server     `json:"server,omitempty"`
+	Group    ProxyGroup `json:"group,omitempty"`
+	Mappings []Mapping  `json:"mappings,omitempty" gorm:"foreignKey:UpstreamProxyID"`
 }
 
 // Mapping represents client to proxy mapping rules
@@ -92,6 +106,7 @@ type AgentPullResponse struct {
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&User{},
+		&ProxyGroup{},
 		&Server{},
 		&Proxy{},
 		&Mapping{},
