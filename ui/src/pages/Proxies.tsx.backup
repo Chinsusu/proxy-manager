@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
-import { Users, Activity, ChevronDown, ChevronRight, Server, Clock, Eye, EyeOff, Plus, Upload, Trash2 } from 'lucide-react';
+import { Users, Activity, ChevronDown, ChevronRight, Server, Clock, Eye, EyeOff, Plus, Upload } from 'lucide-react';
 import { format } from 'date-fns';
 import { ProxyBulkImportModal } from '../components/ProxyBulkImportModal';
 import toast from 'react-hot-toast';
 import { DeleteProxyButton } from '../components/DeleteProxyButton';
-import { BulkDeleteProxyButton } from '../components/BulkDeleteProxyButton';
 
 interface Proxy {
   id: string;
@@ -45,7 +44,6 @@ export const Proxies: React.FC = () => {
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [selectedProxies, setSelectedProxies] = useState<Set<string>>(new Set());
 
   const queryClient = useQueryClient();
 
@@ -102,35 +100,6 @@ export const Proxies: React.FC = () => {
     }
     setVisiblePasswords(newVisible);
   };
-
-  // Selection helper functions
-  const toggleProxySelection = (proxyId: string) => {
-    const newSelected = new Set(selectedProxies);
-    if (newSelected.has(proxyId)) {
-      newSelected.delete(proxyId);
-    } else {
-      newSelected.add(proxyId);
-    }
-    setSelectedProxies(newSelected);
-  };
-
-  const selectAllProxiesInServer = (serverId: string) => {
-    const serverProxies = servers?.find(s => s.id === serverId)?.proxies || [];
-    const newSelected = new Set(selectedProxies);
-    const allSelected = serverProxies.every(p => newSelected.has(p.id));
-    
-    if (allSelected) {
-      serverProxies.forEach(p => newSelected.delete(p.id));
-    } else {
-      serverProxies.forEach(p => newSelected.add(p.id));
-    }
-    setSelectedProxies(newSelected);
-  };
-
-  const clearSelection = () => {
-    setSelectedProxies(new Set());
-  };
-
 
   const handleBulkImport = (proxies: ProxyImportData[]) => {
     importProxiesMutation.mutate(proxies);
@@ -202,19 +171,13 @@ export const Proxies: React.FC = () => {
               )}
             </p>
           </div>
-          <div className="flex items-center space-x-3">
-            <BulkDeleteProxyButton
-              selectedProxyIds={Array.from(selectedProxies)}
-              onClearSelection={clearSelection}
-            />
-            <button
-              onClick={() => setIsImportModalOpen(true)}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
-            >
-              <Upload className="h-4 w-4 mr-2" />
-              Bulk Import
-            </button>
-          </div>
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Bulk Import
+          </button>
         </div>
       </div>
 
@@ -270,15 +233,6 @@ export const Proxies: React.FC = () => {
                   <Users className="h-4 w-4" />
                   <span>{server.proxies.length} Proxies</span>
                 </button>
-                <div className="flex items-center space-x-2 mb-3">
-                  <input
-                    type="checkbox"
-                    checked={server.proxies.length > 0 && server.proxies.every(p => selectedProxies.has(p.id))}
-                    onChange={() => selectAllProxiesInServer(server.id)}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <span className="text-sm text-gray-600">Select all proxies</span>
-                </div>
 
                 {/* Proxies List */}
                 {expandedServers.has(server.id) && (
@@ -298,14 +252,6 @@ export const Proxies: React.FC = () => {
                                   ? 'bg-red-500'
                                   : 'bg-gray-500'
                               }`}></div>
-                            </div>
-                            <div className="flex-shrink-0">
-                              <input
-                                type="checkbox"
-                                checked={selectedProxies.has(proxy.id)}
-                                onChange={() => toggleProxySelection(proxy.id)}
-                                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                              />
                             </div>
                             <div className="flex-1">
                               <div className="flex items-center space-x-4">
