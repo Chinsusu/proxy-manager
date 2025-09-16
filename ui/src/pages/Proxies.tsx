@@ -5,6 +5,7 @@ import { Users, Activity, ChevronDown, ChevronRight, Server, Clock, Eye, EyeOff,
 import { format } from 'date-fns';
 import { ProxyBulkImportModal } from '../components/ProxyBulkImportModal';
 import toast from 'react-hot-toast';
+import { DeleteProxyButton } from '../components/DeleteProxyButton';
 
 interface Proxy {
   id: string;
@@ -298,6 +299,10 @@ export const Proxies: React.FC = () => {
                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getHealthColor(proxy.health)}`}>
                               {proxy.health}
                             </span>
+                            <DeleteProxyButton
+                              proxyId={proxy.id}
+                              proxyLabel={proxy.label}
+                            />
                             <div className="text-xs text-gray-500 text-right">
                               <div className="flex items-center">
                                 <Clock className="inline w-3 h-3 mr-1" />
