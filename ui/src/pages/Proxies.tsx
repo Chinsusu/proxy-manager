@@ -7,10 +7,23 @@ import { ProxyBulkImportModal } from '../components/ProxyBulkImportModal';
 import toast from 'react-hot-toast';
 import { DeleteProxyButton } from '../components/DeleteProxyButton';
 import { BulkDeleteProxyButton } from '../components/BulkDeleteProxyButton';
+import { GroupManagement } from '../components/GroupManagement';
+import { MoveProxyButton } from '../components/MoveProxyButton';
+
+
+interface ProxyGroup {
+  id: string;
+  name: string;
+  description?: string;
+  color?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface Proxy {
   id: string;
   server_id: string;
+  group_id?: string;
   label: string;
   type?: string;
   host: string;
@@ -46,6 +59,7 @@ export const Proxies: React.FC = () => {
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(new Set());
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [selectedProxies, setSelectedProxies] = useState<Set<string>>(new Set());
+  const [showGroupView, setShowGroupView] = useState<boolean>(false);
 
   const queryClient = useQueryClient();
 

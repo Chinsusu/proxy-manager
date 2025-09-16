@@ -28,6 +28,7 @@ interface ProxyBulkImportModalProps {
   onImport: (proxies: ProxyData[]) => void;
   isLoading?: boolean;
   availableServers: Array<{ id: string; name: string }>;
+  availableGroups?: Array<{ id: string; name: string; color?: string; }>;
   existingProxies?: ExistingProxy[];
 }
 
@@ -37,10 +38,12 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
   onImport,
   isLoading = false,
   availableServers,
+  availableGroups = [],
   existingProxies = []
 }) => {
   const [proxyText, setProxyText] = useState('');
   const [selectedServerId, setSelectedServerId] = useState<string>('');
+  const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [parsedProxies, setParsedProxies] = useState<ProxyData[]>([]);
   const [isChecking, setIsChecking] = useState(false);
   const [step, setStep] = useState<'input' | 'checking' | 'results'>('input');
@@ -216,6 +219,27 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
               </p>
             </div>
 
+            {/* Group Selector */}
+            {availableGroups.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Group (optional)
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific group (will use default)</option>
+                  {availableGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <div>
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -271,6 +295,27 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
                     proxy.isDuplicate ? 'bg-orange-50 border border-orange-200' : 'bg-gray-50'
                   }`}>
                     <div className="flex items-center space-x-3">
+            {/* Group Selector */}
+            {availableGroups.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Group (optional)
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific group (will use default)</option>
+                  {availableGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
                       <div>
                         {proxy.isDuplicate ? (
                           <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -282,6 +327,27 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
                           <XCircle className="h-4 w-4 text-red-500" />
                         )}
                       </div>
+            {/* Group Selector */}
+            {availableGroups.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Group (optional)
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific group (will use default)</option>
+                  {availableGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
                       <div>
                         <div className="text-sm font-medium">{proxy.host}:{proxy.port}</div>
                         <div className="text-xs text-gray-500">
@@ -356,7 +422,7 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
                   <label htmlFor="skipDuplicates" className="text-sm font-medium text-gray-700">
-                    Skip duplicate proxies during import
+                    Skip duplicate proxies (recommended)
                   </label>
                 </div>
                 <p className="text-xs text-gray-500 mt-2">
@@ -381,6 +447,27 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
                   }`}
                 >
                   <div className="flex items-center space-x-3">
+            {/* Group Selector */}
+            {availableGroups.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Group (optional)
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific group (will use default)</option>
+                  {availableGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
                     <div>
                       {proxy.isDuplicate ? (
                         <AlertTriangle className="h-4 w-4 text-orange-500" />
@@ -390,6 +477,27 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
                         <XCircle className="h-4 w-4 text-red-500" />
                       )}
                     </div>
+            {/* Group Selector */}
+            {availableGroups.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Target Group (optional)
+                </label>
+                <select
+                  value={selectedGroupId}
+                  onChange={(e) => setSelectedGroupId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">No specific group (will use default)</option>
+                  {availableGroups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
                     <div>
                       <div className="text-sm font-medium">{proxy.host}:{proxy.port}</div>
                       <div className="text-xs text-gray-500">
