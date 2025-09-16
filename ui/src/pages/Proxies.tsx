@@ -92,7 +92,9 @@ export const Proxies: React.FC = () => {
         id: proxy.id,
         host: proxy.host,
         port: proxy.port,
-        label: proxy.label
+        label: proxy.label,
+        username: proxy.username,
+        password: proxy.password
       }))
     );
   };

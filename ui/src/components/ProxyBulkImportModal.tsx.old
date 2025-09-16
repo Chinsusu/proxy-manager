@@ -6,8 +6,6 @@ interface ExistingProxy {
   host: string;
   port: number;
   label?: string;
-  username?: string;
-  password?: string;
 }
 
 interface ProxyData {
@@ -86,10 +84,7 @@ export const ProxyBulkImportModal: React.FC<ProxyBulkImportModalProps> = ({
   const detectDuplicates = (proxies: ProxyData[]): ProxyData[] => {
     return proxies.map(proxy => {
       const existingProxy = existingProxies.find(
-        existing => existing.host === proxy.host && 
-                   existing.port === proxy.port &&
-                   (existing.username || "") === proxy.username &&
-                   (existing.password || "") === proxy.password
+        existing => existing.host === proxy.host && existing.port === proxy.port
       );
       return {
         ...proxy,
