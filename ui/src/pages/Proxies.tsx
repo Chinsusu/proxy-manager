@@ -83,6 +83,19 @@ export const Proxies: React.FC = () => {
     },
   });
 
+
+  // Get existing proxies for duplicate detection
+  const getExistingProxies = () => {
+    if (!servers) return [];
+    return servers.flatMap(server => 
+      (server.proxies || []).map(proxy => ({
+        id: proxy.id,
+        host: proxy.host,
+        port: proxy.port,
+        label: proxy.label
+      }))
+    );
+  };
   const toggleServerExpansion = (serverId: string) => {
     const newExpanded = new Set(expandedServers);
     if (newExpanded.has(serverId)) {
@@ -385,6 +398,7 @@ export const Proxies: React.FC = () => {
         onImport={handleBulkImport}
         isLoading={importProxiesMutation.isPending}
         availableServers={availableServers}
+        existingProxies={getExistingProxies()}
       />
     </div>
   );
