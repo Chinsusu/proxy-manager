@@ -221,7 +221,7 @@ class PGWManager {
     // header icons + click
     const thead = tbody.parentElement?.querySelector('thead');
     if (thead) {
-      const arrow = asc ? ' \\u25B2' : ' \\u25BC';
+      const arrow = asc ? ' ▲' : ' ▼';
       thead.innerHTML = '<tr>'
         + '<th data-k="id" class="sortable">ID' + (key === 'id' ? arrow : '') + '</th>'
         + '<th data-k="type" class="sortable">Type' + (key === 'type' ? arrow : '') + '</th>'
@@ -351,7 +351,7 @@ class PGWManager {
     // header icons + click
     const thead = tbody.parentElement?.querySelector('thead');
     if (thead) {
-      const arrow = asc ? ' \\u25B2' : ' \\u25BC';
+      const arrow = asc ? ' ▲' : ' ▼';
       thead.innerHTML = '<tr>'
         + '<th data-k="id" class="sortable">ID' + (key === 'id' ? arrow : '') + '</th>'
         + '<th data-k="client" class="sortable">Client IP/CIDR' + (key === 'client' ? arrow : '') + '</th>'

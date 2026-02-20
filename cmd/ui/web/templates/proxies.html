@@ -1,0 +1,102 @@
+{{template "base" .}}
+
+{{define "title"}}Proxy Servers{{end}}
+
+{{define "content"}}
+<div class="page-header mb-4">
+    <div class="d-flex align-items-center justify-content-between">
+        <div>
+            <h5 class="page-title">Proxy Servers</h5>
+            <p class="text-muted small mb-0">Quản lý danh sách proxy upstream</p>
+        </div>
+        <span class="badge bg-label-primary fs-6" id="proxy-count">— proxies</span>
+    </div>
+</div>
+
+<!-- Add proxy form -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-plus-circle me-2 text-primary"></i>Thêm Proxy Server</h6>
+    </div>
+    <div class="card-body">
+        <form id="form-proxy">
+            <div class="row g-3 align-items-end">
+                <div class="col-6 col-lg-1">
+                    <label class="form-label small fw-medium">Type</label>
+                    <select name="type" class="form-select form-select-sm">
+                        <option value="http">HTTP</option>
+                        <option value="socks5">SOCKS5</option>
+                    </select>
+                </div>
+                <div class="col-12 col-lg-3">
+                    <label class="form-label small fw-medium">Host</label>
+                    <input type="text" name="host" class="form-control form-control-sm" placeholder="proxy.example.com"
+                        required>
+                </div>
+                <div class="col-6 col-lg-1">
+                    <label class="form-label small fw-medium">Port</label>
+                    <input type="number" name="port" class="form-control form-control-sm" placeholder="8080" required
+                        min="1" max="65535">
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="form-label small fw-medium">Username</label>
+                    <input type="text" name="username" class="form-control form-control-sm" placeholder="(optional)">
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="form-label small fw-medium">Password</label>
+                    <input type="password" name="password" class="form-control form-control-sm"
+                        placeholder="(optional)">
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="bi bi-plus me-1"></i>Add Proxy
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Bulk import -->
+        <hr class="my-3">
+        <div class="row g-3 align-items-end">
+            <div class="col-12 col-md-10">
+                <label class="form-label small fw-medium">Bulk Import <span
+                        class="text-muted fw-normal">(IP:PORT:USER:PASS, một dòng một proxy)</span></label>
+                <textarea id="import-proxies" class="form-control form-control-sm font-monospace" rows="3"
+                    placeholder="192.0.2.10:8080:alice:s3cret&#10;socks5://198.51.100.22:1080:bob:pass123"></textarea>
+            </div>
+            <div class="col-auto">
+                <button id="btn-import-proxies" class="btn btn-outline-secondary btn-sm">
+                    <i class="bi bi-upload me-1"></i>Import
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Proxy table -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 proxies-table">
+            <thead>
+                <tr>
+                    <th data-k="id" class="sortable">ID</th>
+                    <th data-k="type" class="sortable">Type</th>
+                    <th data-k="address" class="sortable">Address</th>
+                    <th data-k="status" class="sortable">Status</th>
+                    <th data-k="latency" class="sortable">Latency</th>
+                    <th data-k="exit" class="sortable">Exit IP</th>
+                    <th data-k="last" class="sortable">Last Check</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-proxies">
+                <tr>
+                    <td colspan="8" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Loading...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

@@ -1,0 +1,138 @@
+{{template "base" .}}
+
+{{define "title"}}Dashboard{{end}}
+
+{{define "content"}}
+<div class="page-header mb-4">
+    <div class="d-flex align-items-center justify-content-between">
+        <div>
+            <h5 class="page-title">Dashboard</h5>
+            <p class="text-muted small mb-0">Tổng quan hệ thống Proxy Gateway</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-secondary" id="btn-refresh">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+            <button class="btn btn-sm btn-warning" id="btn-health-all">
+                <i class="bi bi-heart-pulse me-1"></i>Health All
+            </button>
+            <button class="btn btn-sm btn-primary" id="btn-reconcile">
+                <i class="bi bi-arrows-angle-contract me-1"></i>Reconcile
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Stat cards -->
+<div class="row g-4 mb-4">
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-primary-light">
+                <i class="bi bi-hdd-network text-primary"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-value" id="stat-proxies">—</div>
+                <div class="stat-label">Total Proxies</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-success-light">
+                <i class="bi bi-check-circle text-success"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-value text-success" id="stat-proxies-ok">—</div>
+                <div class="stat-label">Healthy</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-info-light">
+                <i class="bi bi-diagram-3 text-info"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-value text-info" id="stat-mappings">—</div>
+                <div class="stat-label">Active Mappings</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-xl-3">
+        <div class="stat-card">
+            <div class="stat-icon bg-warning-light">
+                <i class="bi bi-clock-history text-warning"></i>
+            </div>
+            <div class="stat-body">
+                <div class="stat-value small fw-medium" id="last-refresh">—</div>
+                <div class="stat-label">Last Updated</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Service status -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h6 class="card-title mb-0"><i class="bi bi-activity me-2 text-primary"></i>System Status</h6>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-server text-muted"></i>
+                        <span class="small fw-medium">API Service</span>
+                    </div>
+                    <span class="badge" id="api-status">Checking...</span>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-cpu text-muted"></i>
+                        <span class="small fw-medium">Agent Service</span>
+                    </div>
+                    <span class="badge" id="agent-status">Checking...</span>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="d-flex align-items-center justify-content-between p-2 rounded bg-light">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="bi bi-arrow-left-right text-muted"></i>
+                        <span class="small fw-medium">Forwarder</span>
+                    </div>
+                    <span class="badge" id="fwd-status">Checking...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Proxy summary table -->
+<div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="card-title mb-0"><i class="bi bi-table me-2 text-primary"></i>Proxy Status</h6>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+            <thead>
+                <tr>
+                    <th>Proxy</th>
+                    <th>Status</th>
+                    <th>Latency</th>
+                    <th>Exit IP</th>
+                    <th>Last Check</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-proxy-summary">
+                <tr>
+                    <td colspan="5" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div>Loading...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

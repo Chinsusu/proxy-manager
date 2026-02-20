@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.4.0] - 2026-02-20
+
+### Changed
+- **UI architecture refactor** — Moved from embedded HTML string constants in `main.go` to separate template files in `cmd/ui/web/templates/` using Go's `html/template` package with `//go:embed`. Binary remains self-contained.
+- **New UI theme: Vuexy Light** — Complete redesign from Bootstrap dark theme to Vuexy-inspired light theme:
+  - Font: **Public Sans** (Google Fonts)
+  - Primary color: **#7367F0** (indigo)
+  - Background: **#F8F7FA**, Cards: **#FFFFFF** with shadow
+  - Layout: Top navbar → **Vertical sidebar** (260px fixed) with Bootstrap Icons
+  - Light-mode badges, stat cards with colored icons, Vuexy card shadows
+- **Login page redesign** — Centered card layout, eye toggle for password, spinner on submit
+- **Dashboard** — 4 stat cards (Total Proxies, Healthy, Active Mappings, Last Updated) + System Status panel
+- **Responsive** — Sidebar hidden on mobile with hamburger toggle + overlay
+
+### Fixed
+- Sort arrow unicode (`\u25B2`/`\u25BC`) was rendered as literal text in table headers due to double-backslash in base64-decoded JS; replaced with literal `▲`/`▼` characters
+
 ## [1.3.0] - 2026-02-14
 
 ### Added
