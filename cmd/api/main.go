@@ -603,7 +603,155 @@ func main() {
 		}
 	})
 
+	// ---- Emails ----
+	http.HandleFunc("/v1/emails", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		switch r.Method {
+		case http.MethodGet:
+			httpx.JSON(w, 200, st.ListEmails())
+		case http.MethodPost:
+			var e types.Email
+			if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			if e.Address == "" {
+				httpx.JSON(w, 400, map[string]string{"error": "address required"}); return
+			}
+			httpx.JSON(w, 201, st.CreateEmail(e))
+		default:
+			w.WriteHeader(405)
+		}
+	})
+	http.HandleFunc("/v1/emails/", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/emails/")
+		if id == "" { httpx.JSON(w, 400, map[string]string{"error": "id required"}); return }
+		switch r.Method {
+		case http.MethodPut:
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			var e types.Email
+			if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			e.ID = id
+			if updated, ok := st.UpdateEmail(e); ok {
+				httpx.JSON(w, 200, updated)
+			} else {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+			}
+		case http.MethodDelete:
+			if st.DeleteEmail(id) {
+				w.WriteHeader(204)
+			} else {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+			}
+		default:
+			w.WriteHeader(405)
+		}
+	})
+
+	// ---- PayPals ----
+	http.HandleFunc("/v1/paypals", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		switch r.Method {
+		case http.MethodGet:
+			httpx.JSON(w, 200, st.ListPayPals())
+		case http.MethodPost:
+			var p types.PayPal
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			if p.Email == "" {
+				httpx.JSON(w, 400, map[string]string{"error": "email required"}); return
+			}
+			httpx.JSON(w, 201, st.CreatePayPal(p))
+		default:
+			w.WriteHeader(405)
+		}
+	})
+	http.HandleFunc("/v1/paypals/", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/paypals/")
+		if id == "" { httpx.JSON(w, 400, map[string]string{"error": "id required"}); return }
+		switch r.Method {
+		case http.MethodPut:
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			var p types.PayPal
+			if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			p.ID = id
+			if updated, ok := st.UpdatePayPal(p); ok {
+				httpx.JSON(w, 200, updated)
+			} else {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+			}
+		case http.MethodDelete:
+			if st.DeletePayPal(id) {
+				w.WriteHeader(204)
+			} else {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+			}
+		default:
+			w.WriteHeader(405)
+		}
+	})
+
+	// ---- Income ----
+	http.HandleFunc("/v1/income/report", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		if r.Method != http.MethodGet { w.WriteHeader(405); return }
+		httpx.JSON(w, 200, st.GetIncomeReport())
+	})
+	http.HandleFunc("/v1/income", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		switch r.Method {
+		case http.MethodGet:
+			httpx.JSON(w, 200, st.ListIncome())
+		case http.MethodPost:
+			var i types.Income
+			if err := json.NewDecoder(r.Body).Decode(&i); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			if i.Amount <= 0 {
+				httpx.JSON(w, 400, map[string]string{"error": "amount must be > 0"}); return
+			}
+			httpx.JSON(w, 201, st.CreateIncome(i))
+		default:
+			w.WriteHeader(405)
+		}
+	})
+	http.HandleFunc("/v1/income/", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/income/")
+		if id == "" || id == "report" { return } // handled above
+		if r.Method != http.MethodDelete { w.WriteHeader(405); return }
+		if st.DeleteIncome(id) {
+			w.WriteHeader(204)
+		} else {
+			httpx.JSON(w, 404, map[string]string{"error": "not found"})
+		}
+	})
+
 	server := &http.Server{Addr: cfg.Addr}
+
 
 	// graceful shutdown on SIGTERM/SIGINT
 	go func() {

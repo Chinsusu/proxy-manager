@@ -5,10 +5,12 @@ import "time"
 type ProxyStatus string
 
 const (
-	StatusOK      ProxyStatus = "OK"
-	StatusDegraded            = "DEGRADED"
-	StatusDown                = "DOWN"
+	StatusOK       ProxyStatus = "OK"
+	StatusDegraded ProxyStatus = "DEGRADED"
+	StatusDown     ProxyStatus = "DOWN"
 )
+
+// ---------- Proxy / Client / Mapping ----------
 
 type Proxy struct {
 	ID            string      `json:"id"`
@@ -48,4 +50,52 @@ type MappingView struct {
 	Proxy             Proxy  `json:"proxy"`
 	State             string `json:"state"`
 	LocalRedirectPort int    `json:"local_redirect_port"`
+}
+
+// ---------- Email Management ----------
+
+type Email struct {
+	ID            string    `json:"id"`
+	Address       string    `json:"address"`
+	Provider      string    `json:"provider"`                // "gmail" | "outlook" | "yahoo" | "other"
+	Password      string    `json:"password,omitempty"`
+	RecoveryEmail string    `json:"recovery_email,omitempty"`
+	PayPalID      *string   `json:"paypal_id,omitempty"` // linked PayPal account
+	Note          string    `json:"note,omitempty"`
+	Status        string    `json:"status"` // "active" | "disabled" | "banned"
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// ---------- PayPal Management ----------
+
+type PayPal struct {
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`                // PayPal login email
+	OwnerName string    `json:"owner_name,omitempty"`
+	Verified  bool      `json:"verified"`
+	Balance   float64   `json:"balance"`  // manually entered
+	Currency  string    `json:"currency"` // "USD" | "EUR" etc.
+	Status    string    `json:"status"`   // "active" | "limited" | "suspended"
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ---------- Income Tracking ----------
+
+type Income struct {
+	ID          string    `json:"id"`
+	Amount      float64   `json:"amount"`
+	Currency    string    `json:"currency"`            // "USD" | "EUR" etc.
+	Source      string    `json:"source"`              // "paypal" | "crypto" | "bank" | "other"
+	PayPalID    *string   `json:"paypal_id,omitempty"`
+	Description string    `json:"description,omitempty"`
+	ReceivedAt  time.Time `json:"received_at"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type IncomeReport struct {
+	TotalUSD float64            `json:"total_usd"`
+	BySource map[string]float64 `json:"by_source"`
+	ByMonth  map[string]float64 `json:"by_month"` // "2026-02" -> sum USD
+	Count    int                `json:"count"`
 }

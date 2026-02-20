@@ -83,6 +83,10 @@ func main() {
 	http.HandleFunc("/", handleRoot)
 	http.HandleFunc("/manage", handleManage)
 	http.HandleFunc("/proxies", handleProxies)
+	http.HandleFunc("/emails", handleEmails)
+	http.HandleFunc("/paypal", handlePayPal)
+	http.HandleFunc("/income", handleIncome)
+	http.HandleFunc("/reports", handleReports)
 	http.HandleFunc("/login", handleLogin)
 	http.HandleFunc("/logout", handleLogout)
 
@@ -144,6 +148,38 @@ func handleManage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	renderPage(w, "manage.html", PageData{ActivePage: "manage", Title: "Mappings"})
+}
+
+func handleEmails(w http.ResponseWriter, r *http.Request) {
+	if !uiAuthorized(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	renderPage(w, "emails.html", PageData{ActivePage: "emails", Title: "Emails"})
+}
+
+func handlePayPal(w http.ResponseWriter, r *http.Request) {
+	if !uiAuthorized(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	renderPage(w, "paypal.html", PageData{ActivePage: "paypal", Title: "PayPal"})
+}
+
+func handleIncome(w http.ResponseWriter, r *http.Request) {
+	if !uiAuthorized(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	renderPage(w, "income.html", PageData{ActivePage: "income", Title: "Income"})
+}
+
+func handleReports(w http.ResponseWriter, r *http.Request) {
+	if !uiAuthorized(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	renderPage(w, "reports.html", PageData{ActivePage: "reports", Title: "Reports"})
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {

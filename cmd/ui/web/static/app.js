@@ -803,3 +803,306 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// ============================================================
+// Email Management
+// ============================================================
+class EmailManager {
+  constructor(pgw) { this.pgw = pgw; this.data = []; this.sortKey = 'address'; this.sortAsc = true; }
+
+  async init() {
+    document.getElementById('form-email')?.addEventListener('submit', e => { e.preventDefault(); this.addEmail(); });
+    await this.load();
+  }
+
+  async load() {
+    try {
+      const res = await fetch('/api/v1/emails');
+      if (!res.ok) throw new Error(res.statusText);
+      this.data = await res.json() || [];
+      this.render();
+    } catch(e) { console.error('emails load:', e); }
+  }
+
+  async addEmail() {
+    const address = document.getElementById('email-address').value.trim();
+    const provider = document.getElementById('email-provider').value;
+    const password = document.getElementById('email-password').value.trim();
+    const recovery = document.getElementById('email-recovery').value.trim();
+    const note = document.getElementById('email-note').value.trim();
+    if (!address) return;
+    try {
+      const res = await fetch('/api/v1/emails', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ address, provider, password, recovery_email: recovery, note, status:'active' })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      document.getElementById('form-email').reset();
+      this.pgw.showToast('Email added', 'success');
+      await this.load();
+    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+  }
+
+  async deleteEmail(id) {
+    if (!confirm('Xóa email này?')) return;
+    try {
+      await fetch('/api/v1/emails/' + id, { method: 'DELETE' });
+      this.pgw.showToast('Deleted', 'success');
+      await this.load();
+    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+  }
+
+  render() {
+    const tbody = document.getElementById('tbody-emails');
+    const badge = document.getElementById('email-count');
+    if (!tbody) return;
+    if (badge) badge.textContent = this.data.length + ' emails';
+    if (!this.data.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No emails yet</td></tr>'; return;
+    }
+    const statusBadge = s => {
+      const m = {active:'success',disabled:'secondary',banned:'danger'};
+      return `<span class="badge bg-label-${m[s]||'secondary'}">${s}</span>`;
+    };
+    const providerIcon = p => {
+      const m = {gmail:'google',outlook:'microsoft',yahoo:'yahoo'};
+      return m[p] || p;
+    };
+    tbody.innerHTML = this.data.map(e => `
+      <tr>
+        <td><span class="fw-medium">${e.address}</span></td>
+        <td><span class="badge bg-label-info">${e.provider||'other'}</span></td>
+        <td>${statusBadge(e.status||'active')}</td>
+        <td>${e.paypal_id ? '<span class="badge bg-label-warning">Linked</span>' : '<span class="text-muted">—</span>'}</td>
+        <td class="text-muted small">${e.note||'—'}</td>
+        <td class="text-muted small">${new Date(e.created_at).toLocaleDateString('vi-VN')}</td>
+        <td>
+          <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.emailMgr.deleteEmail('${e.id}')" title="Delete">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>`).join('');
+  }
+}
+
+// ============================================================
+// PayPal Management
+// ============================================================
+class PayPalManager {
+  constructor(pgw) { this.pgw = pgw; this.data = []; }
+
+  async init() {
+    document.getElementById('form-paypal')?.addEventListener('submit', e => { e.preventDefault(); this.addPayPal(); });
+    await this.load();
+  }
+
+  async load() {
+    try {
+      const res = await fetch('/api/v1/paypals');
+      if (!res.ok) throw new Error(res.statusText);
+      this.data = await res.json() || [];
+      this.render();
+      return this.data;
+    } catch(e) { console.error('paypals load:', e); return []; }
+  }
+
+  async addPayPal() {
+    const email = document.getElementById('paypal-email').value.trim();
+    const owner_name = document.getElementById('paypal-owner').value.trim();
+    const balance = parseFloat(document.getElementById('paypal-balance').value) || 0;
+    const currency = document.getElementById('paypal-currency').value;
+    const status = document.getElementById('paypal-status').value;
+    const verified = document.getElementById('paypal-verified').checked;
+    const note = document.getElementById('paypal-note').value.trim();
+    if (!email) return;
+    try {
+      const res = await fetch('/api/v1/paypals', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ email, owner_name, balance, currency, status, verified, note })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      document.getElementById('form-paypal').reset();
+      this.pgw.showToast('PayPal added', 'success');
+      await this.load();
+    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+  }
+
+  async deletePayPal(id) {
+    if (!confirm('Xóa PayPal account này? Income liên quan sẽ bị xóa.')) return;
+    try {
+      await fetch('/api/v1/paypals/' + id, { method: 'DELETE' });
+      this.pgw.showToast('Deleted', 'success');
+      await this.load();
+    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+  }
+
+  render() {
+    const tbody = document.getElementById('tbody-paypals');
+    const badge = document.getElementById('paypal-count');
+    if (!tbody) return;
+    if (badge) badge.textContent = this.data.length + ' accounts';
+    if (!this.data.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No PayPal accounts yet</td></tr>'; return;
+    }
+    const statusBadge = s => {
+      const m = {active:'success',limited:'warning',suspended:'danger'};
+      return `<span class="badge bg-label-${m[s]||'secondary'}">${s}</span>`;
+    };
+    tbody.innerHTML = this.data.map(p => `
+      <tr>
+        <td><span class="fw-medium">${p.email}</span></td>
+        <td>${p.owner_name||'<span class="text-muted">—</span>'}</td>
+        <td class="fw-semibold text-success">$${(p.balance||0).toFixed(2)} <span class="text-muted small">${p.currency||'USD'}</span></td>
+        <td>${statusBadge(p.status||'active')}</td>
+        <td>${p.verified ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle text-muted"></i>'}</td>
+        <td class="text-muted small">${p.note||'—'}</td>
+        <td class="text-muted small">${new Date(p.created_at).toLocaleDateString('vi-VN')}</td>
+        <td>
+          <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.paypalMgr.deletePayPal('${p.id}')" title="Delete">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>`).join('');
+  }
+}
+
+// ============================================================
+// Income Management
+// ============================================================
+class IncomeManager {
+  constructor(pgw) { this.pgw = pgw; this.data = []; this.paypals = []; }
+
+  async init() {
+    document.getElementById('form-income')?.addEventListener('submit', e => { e.preventDefault(); this.addIncome(); });
+    // Set default received_at to now
+    const dtEl = document.getElementById('income-received-at');
+    if (dtEl) dtEl.value = new Date().toISOString().slice(0,16);
+
+    await Promise.all([this.loadPayPals(), this.load()]);
+    this.updateSummary();
+  }
+
+  async loadPayPals() {
+    try {
+      const res = await fetch('/api/v1/paypals');
+      this.paypals = await res.json() || [];
+      const sel = document.getElementById('income-paypal-id');
+      if (sel) {
+        const opts = this.paypals.map(p => `<option value="${p.id}">${p.email}</option>`).join('');
+        sel.innerHTML = '<option value="">(none)</option>' + opts;
+      }
+    } catch(e) {}
+  }
+
+  async load() {
+    try {
+      const res = await fetch('/api/v1/income');
+      if (!res.ok) throw new Error(res.statusText);
+      this.data = await res.json() || [];
+      this.render();
+    } catch(e) { console.error('income load:', e); }
+  }
+
+  async addIncome() {
+    const amount = parseFloat(document.getElementById('income-amount').value);
+    const currency = document.getElementById('income-currency').value;
+    const source = document.getElementById('income-source').value;
+    const paypalIdEl = document.getElementById('income-paypal-id');
+    const paypal_id = paypalIdEl?.value || null;
+    const description = document.getElementById('income-description').value.trim();
+    const receivedAtEl = document.getElementById('income-received-at');
+    const received_at = receivedAtEl?.value ? new Date(receivedAtEl.value).toISOString() : new Date().toISOString();
+    if (!amount || amount <= 0) return;
+    try {
+      const body = { amount, currency, source, description, received_at };
+      if (paypal_id) body.paypal_id = paypal_id;
+      const res = await fetch('/api/v1/income', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      document.getElementById('form-income').reset();
+      if (receivedAtEl) receivedAtEl.value = new Date().toISOString().slice(0,16);
+      this.pgw.showToast('Income recorded', 'success');
+      await this.load();
+      this.updateSummary();
+    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+  }
+
+  async deleteIncome(id) {
+    if (!confirm('Xóa income entry này?')) return;
+    try {
+      await fetch('/api/v1/income/' + id, { method: 'DELETE' });
+      this.pgw.showToast('Deleted', 'success');
+      await this.load();
+      this.updateSummary();
+    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+  }
+
+  updateSummary() {
+    const total = this.data.reduce((s, i) => s + (i.amount||0), 0);
+    const now = new Date();
+    const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    const monthTotal = this.data
+      .filter(i => i.received_at && i.received_at.startsWith(thisMonth))
+      .reduce((s, i) => s + (i.amount||0), 0);
+    const paypalTotal = this.data
+      .filter(i => i.source === 'paypal')
+      .reduce((s, i) => s + (i.amount||0), 0);
+
+    const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+    set('income-total', '$' + total.toFixed(2));
+    set('income-month', '$' + monthTotal.toFixed(2));
+    set('income-count', this.data.length);
+    set('income-paypal-total', '$' + paypalTotal.toFixed(2));
+  }
+
+  render() {
+    const tbody = document.getElementById('tbody-income');
+    if (!tbody) return;
+    if (!this.data.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No income recorded yet</td></tr>'; return;
+    }
+    const srcBadge = s => {
+      const m = {paypal:'warning',bank:'primary',crypto:'info',other:'secondary'};
+      return `<span class="badge bg-label-${m[s]||'secondary'}">${s||'other'}</span>`;
+    };
+    const ppMap = {};
+    this.paypals.forEach(p => ppMap[p.id] = p.email);
+    tbody.innerHTML = this.data.map(i => `
+      <tr>
+        <td class="text-muted small">${new Date(i.received_at).toLocaleString('vi-VN')}</td>
+        <td class="fw-semibold text-success">$${(i.amount||0).toFixed(2)} <span class="text-muted small">${i.currency||'USD'}</span></td>
+        <td>${srcBadge(i.source)}</td>
+        <td class="text-muted small">${i.paypal_id ? (ppMap[i.paypal_id]||i.paypal_id) : '—'}</td>
+        <td class="text-muted small">${i.description||'—'}</td>
+        <td>
+          <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.incomeMgr.deleteIncome('${i.id}')" title="Delete">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>`).join('');
+  }
+}
+
+// ============================================================
+// Auto-init based on current page
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  const path = window.location.pathname;
+  const pgw = window.pgw || { showToast: (m,t) => console.log(t,m) };
+
+  if (path === '/emails') {
+    window.emailMgr = new EmailManager(pgw);
+    window.emailMgr.init();
+  } else if (path === '/paypal') {
+    window.paypalMgr = new PayPalManager(pgw);
+    window.paypalMgr.init();
+  } else if (path === '/income') {
+    window.incomeMgr = new IncomeManager(pgw);
+    window.incomeMgr.init();
+  }
+});
