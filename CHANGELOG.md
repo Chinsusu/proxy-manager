@@ -1,6 +1,32 @@
 # Changelog
 
+## [1.6.0] - 2026-02-20
+
+### Added
+- **SQLite store backend** — new `PGW_STORE=sqlite` option using `modernc.org/sqlite` (pure Go, no CGO binary stays self-contained)
+  - File: `pkg/store/sqlite.go` — full `Store` interface implementation
+  - 6 tables: `proxies`, `clients`, `mappings`, `emails`, `paypals`, `income`
+  - **WAL mode** (`PRAGMA journal_mode=WAL`) — concurrent reads during writes
+  - `SetProxyTelemetryBatch` uses single SQL transaction — critical for 20K proxies (benchmark: 100 updates in ~1.4ms)
+  - `GetIncomeReport` uses SQL aggregation (`SUM + GROUP BY`) — O(1) vs O(n) Go loop
+  - `ListMappings` uses SQL `JOIN` — 1 query vs 3 separate map lookups
+  - Cascade delete PayPal (income + email unlink) in one transaction
+- Default path: `PGW_STORE_PATH=/var/lib/pgw/state.db`
+- Production: updated `/etc/pgw/pgw.env` to use `PGW_STORE=sqlite`
+
+## [1.5.0] - 2026-02-20
+
+### Added
+- **Email account management** — CRUD via `GET/POST /v1/emails`, `DELETE /v1/emails/{id}`
+- **PayPal account management** — CRUD + balance tracking via `GET/POST /v1/paypals`, `PUT/DELETE /v1/paypals/{id}`
+- **Income tracking** — manual income log via `GET/POST /v1/income`, `DELETE /v1/income/{id}`
+- **Income reports API** — `GET /v1/income/report` returns `{total_usd, by_source, by_month, count}`
+- **UI: Account Management section** — 4 new pages in sidebar: Emails, PayPal, Income, Reports
+- **Reports page** — Chart.js bar chart (income by month) + doughnut chart (by source)
+- New data models: `Email`, `PayPal`, `Income`, `IncomeReport` in `pkg/types`
+
 ## [1.4.0] - 2026-02-20
+
 
 ### Changed
 - **UI architecture refactor** — Moved from embedded HTML string constants in `main.go` to separate template files in `cmd/ui/web/templates/` using Go's `html/template` package with `//go:embed`. Binary remains self-contained.

@@ -65,6 +65,16 @@ func main() {
 			path = "/var/lib/pgw/state.json"
 		}
 		st = store.NewFile(path)
+	case "sqlite":
+		sqlitePath := os.Getenv("PGW_STORE_PATH")
+		if sqlitePath == "" {
+			sqlitePath = "/var/lib/pgw/state.db"
+		}
+		var err error
+		if st, err = store.NewSQLite(sqlitePath); err != nil {
+			fmt.Fprintf(os.Stderr, "[FATAL] sqlite store: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		st = store.NewMemory()
 	}
