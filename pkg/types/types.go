@@ -25,6 +25,7 @@ type Proxy struct {
 	LatencyMs     *int        `json:"latency_ms,omitempty"`
 	ExitIP        *string     `json:"exit_ip,omitempty"`
 	LastCheckedAt *time.Time  `json:"last_checked_at,omitempty"`
+	NodeID        *string     `json:"node_id,omitempty"`
 }
 
 type Client struct {

@@ -298,6 +298,14 @@ class PGWManager {
       ? new Date(proxy.last_checked_at).toLocaleTimeString()
       : '—';
 
+    // Build node inline-select for proxy assignment
+    const currentNode = proxy.node_id || '';
+    const nodeOpts = [`<option value="">— no node —</option>`,
+      ...(this.nodes || []).map(n => `<option value="${n.id}" ${n.id === currentNode ? 'selected' : ''}>${n.status === 'online' ? '🟢' : '🔴'} ${n.name || n.ssh_host}</option>`)
+    ].join('');
+    const nodeSelect = `<select class="form-select form-select-sm" style="min-width:130px"
+      onchange="pgw.assignProxyNode('${proxy.id}', this.value)">${nodeOpts}</select>`;
+
     tr.innerHTML = `
       <td><code>${proxy.id.slice(0, 8)}</code></td>
       <td>${proxy.type}</td>
@@ -306,6 +314,7 @@ class PGWManager {
       <td>${latencyBadge}</td>
       <td>${proxy.exit_ip || '—'}</td>
       <td>${lastChecked}</td>
+      <td>${nodeSelect}</td>
       <td>
         <button class="btn btn-sm btn-secondary" onclick="pgw.checkProxyHealth('${proxy.id}')" data-tooltip="Health check">
           Check
@@ -396,19 +405,10 @@ class PGWManager {
 
     const stateBadge = this.createStatusBadge(mapping.state || 'PENDING');
 
-    // Build node inline-select
-    const currentNode = mapping.node_id || '';
-    const nodeOpts = [`<option value="">— no node —</option>`,
-      ...this.nodes.map(n => `<option value="${n.id}" ${n.id === currentNode ? 'selected' : ''}>${n.label || n.ssh_host}</option>`)
-    ].join('');
-    const nodeSelect = `<select class="form-select form-select-sm" style="min-width:120px"
-      onchange="pgw.assignNode('${mapping.id}', this.value)">${nodeOpts}</select>`;
-
     tr.innerHTML = `
       <td><code>${mapping.id.slice(0, 8)}</code></td>
       <td>${mapping.client?.ip_cidr || '—'}</td>
       <td>${proxyAddress}</td>
-      <td>${nodeSelect}</td>
       <td>${stateBadge}</td>
       <td>${mapping.local_redirect_port || '—'}</td>
       <td>
@@ -588,13 +588,11 @@ class PGWManager {
       }
 
       // Create mapping
-      const nodeId = formData.get('node_id') || '';
       await this.apiCall(`${this.apiBase}/v1/mappings`, {
         method: 'POST',
         body: JSON.stringify({
           client_id: clientId,
-          proxy_id: proxyId,
-          ...(nodeId ? { node_id: nodeId } : {})
+          proxy_id: proxyId
         })
       });
 
@@ -607,6 +605,19 @@ class PGWManager {
 
     } catch (error) {
       console.error('Failed to create mapping:', error);
+    }
+  }
+
+  async assignProxyNode(proxyId, nodeId) {
+    try {
+      await this.apiCall(`${this.apiBase}/v1/proxies/${proxyId}/node`, {
+        method: 'PUT',
+        body: JSON.stringify({ node_id: nodeId })
+      });
+      this.showAlert(nodeId ? 'Proxy assigned to node' : 'Proxy unassigned from node', 'success');
+      this.loadData();
+    } catch (error) {
+      console.error('Failed to assign proxy node:', error);
     }
   }
 

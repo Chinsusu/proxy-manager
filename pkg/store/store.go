@@ -16,6 +16,7 @@ type Store interface {
 	ListProxies() []types.Proxy
 	CreateProxy(p types.Proxy) types.Proxy
 	UpdateProxy(p types.Proxy) (types.Proxy, bool)
+	UpdateProxyNode(id, nodeID string) bool
 	DeleteProxy(id string) bool
 
 	// Clients
@@ -133,6 +134,15 @@ func (s *memoryStore) UpdateProxy(p types.Proxy) (types.Proxy, bool) {
 	if _, ok := s.proxies[p.ID]; !ok { return types.Proxy{}, false }
 	s.proxies[p.ID] = p
 	return p, true
+}
+
+func (s *memoryStore) UpdateProxyNode(id, nodeID string) bool {
+	s.mu.Lock(); defer s.mu.Unlock()
+	p, ok := s.proxies[id]
+	if !ok { return false }
+	if nodeID == "" { p.NodeID = nil } else { p.NodeID = &nodeID }
+	s.proxies[id] = p
+	return true
 }
 
 func (s *memoryStore) DeleteProxy(id string) bool {

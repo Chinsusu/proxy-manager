@@ -245,6 +245,24 @@ func main() {
 			return
 		}
 
+		// PUT /v1/proxies/{id}/node — assign/unassign node
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/node") {
+			id := strings.TrimSuffix(path, "/node")
+			var body struct {
+				NodeID string `json:"node_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad request"})
+				return
+			}
+			if ok := st.UpdateProxyNode(id, body.NodeID); !ok {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			httpx.JSON(w, 200, map[string]string{"ok": "true"})
+			return
+		}
+
 		// DELETE /v1/proxies/{id}
 		if r.Method == http.MethodDelete && path != "" && !strings.Contains(path, "/") {
 			id := path

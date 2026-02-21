@@ -7,7 +7,7 @@
     <div class="d-flex align-items-center justify-content-between">
         <div>
             <h5 class="page-title">Client Mappings</h5>
-            <p class="text-muted small mb-0">Gán Client IP → Proxy Server → Node VPS</p>
+            <p class="text-muted small mb-0">Gán Client IP → Proxy Server (đã được gán vào Node VPS)</p>
         </div>
         <span class="badge bg-label-primary fs-6" id="mapping-count">— mappings</span>
     </div>
@@ -36,14 +36,6 @@
                         <option value="">-- Chọn proxy server --</option>
                     </select>
                 </div>
-                <div class="col-12 col-lg-3">
-                    <label class="form-label small fw-medium">Node VPS <span class="text-muted">(tùy
-                            chọn)</span></label>
-                    <select name="node_id" id="select-node" class="form-select form-select-sm">
-                        <option value="">-- Không gán node --</option>
-                    </select>
-                    <div class="form-text">Node VPS sẽ nhận proxy này khi sync</div>
-                </div>
                 <div class="col-auto">
                     <button type="submit" class="btn btn-primary btn-sm">
                         <i class="bi bi-link-45deg me-1"></i>Create Mapping
@@ -63,7 +55,6 @@
                     <th data-k="id" class="sortable">ID</th>
                     <th data-k="client" class="sortable">Client IP/CIDR</th>
                     <th data-k="proxy" class="sortable">Proxy Server</th>
-                    <th data-k="node" class="sortable">Node</th>
                     <th data-k="state" class="sortable">State</th>
                     <th data-k="port" class="sortable">Local Port</th>
                     <th>Actions</th>
@@ -71,7 +62,7 @@
             </thead>
             <tbody id="tbody-mappings">
                 <tr>
-                    <td colspan="7" class="text-center py-4 text-muted">
+                    <td colspan="6" class="text-center py-4 text-muted">
                         <div class="spinner-border spinner-border-sm me-2"></div>Loading...
                     </td>
                 </tr>

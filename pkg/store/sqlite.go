@@ -176,21 +176,22 @@ func fmtTime(t *time.Time) string {
 // ---------- Proxies ----------
 
 func (s *sqliteStore) ListProxies() []types.Proxy {
-	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at FROM proxies ORDER BY host,port,id`)
+	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at,node_id FROM proxies ORDER BY host,port,id`)
 	if err != nil { return nil }
 	defer rows.Close()
 	var out []types.Proxy
 	for rows.Next() {
 		var p types.Proxy
-		var label, username, password, exitIP, lastChecked sql.NullString
+		var label, username, password, exitIP, lastChecked, nodeID sql.NullString
 		var latencyMs sql.NullInt64
-		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked)
+		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked, &nodeID)
 		if label.Valid && label.String != "" { p.Label = label.String }
 		if username.Valid && username.String != "" { p.Username = &username.String }
 		if password.Valid && password.String != "" { p.Password = &password.String }
 		if latencyMs.Valid { v := int(latencyMs.Int64); p.LatencyMs = &v }
 		if exitIP.Valid && exitIP.String != "" { p.ExitIP = &exitIP.String }
 		if lastChecked.Valid { p.LastCheckedAt = parseTime(lastChecked.String) }
+		if nodeID.Valid && nodeID.String != "" { p.NodeID = &nodeID.String }
 		out = append(out, p)
 	}
 	return out
@@ -214,6 +215,16 @@ func (s *sqliteStore) UpdateProxy(p types.Proxy) (types.Proxy, bool) {
 	if err != nil { return types.Proxy{}, false }
 	n, _ := res.RowsAffected()
 	return p, n > 0
+}
+
+func (s *sqliteStore) UpdateProxyNode(id, nodeID string) bool {
+	var err error
+	if nodeID == "" {
+		_, err = s.db.Exec(`UPDATE proxies SET node_id=NULL WHERE id=?`, id)
+	} else {
+		_, err = s.db.Exec(`UPDATE proxies SET node_id=? WHERE id=?`, nodeID, id)
+	}
+	return err == nil
 }
 
 func (s *sqliteStore) DeleteProxy(id string) bool {

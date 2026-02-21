@@ -102,6 +102,16 @@ func (s *fileStore) UpdateProxy(p types.Proxy) (types.Proxy, bool) {
 	return p, true
 }
 
+func (s *fileStore) UpdateProxyNode(id, nodeID string) bool {
+	s.mu.Lock(); defer s.mu.Unlock()
+	p, ok := s.state.Proxies[id]
+	if !ok { return false }
+	if nodeID == "" { p.NodeID = nil } else { p.NodeID = &nodeID }
+	s.state.Proxies[id] = p
+	_ = s.save()
+	return true
+}
+
 func (s *fileStore) DeleteProxy(id string) bool {
 	s.mu.Lock(); defer s.mu.Unlock()
 	if _, ok := s.state.Proxies[id]; !ok { return false }
