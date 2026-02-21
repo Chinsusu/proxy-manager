@@ -1,0 +1,320 @@
+{{template "base" .}}
+{{define "content"}}
+<div class="container-xxl flex-grow-1 container-p-y">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0"><i class="bi bi-hdd-rack me-2 text-primary"></i>Node Management</h4>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalAddNode">
+            <i class="bi bi-plus-lg me-1"></i>Add Node
+        </button>
+    </div>
+
+    <!-- Node cards -->
+    <div class="row g-3 mb-4" id="nodeCards">
+        <div class="col-12 text-muted text-center py-4" id="noNodesMsg">Loading nodes...</div>
+    </div>
+
+    <!-- Node table -->
+    <div class="card">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h5 class="mb-0">Nodes</h5>
+            <button class="btn btn-outline-secondary btn-sm" onclick="NodeManager.refresh()"><i
+                    class="bi bi-arrow-clockwise"></i></button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Name</th>
+                        <th>Host</th>
+                        <th>Status</th>
+                        <th>Deploy</th>
+                        <th>Version</th>
+                        <th>Last Seen</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="nodeTableBody">
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Add Node -->
+<div class="modal fade" id="modalAddNode" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-hdd-rack me-2"></i>Add Node</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="formAddNode">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="nodeName" placeholder="vps-sg-01" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">SSH Host <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="nodeSSHHost" placeholder="1.2.3.4">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SSH Port</label>
+                            <input type="number" class="form-control" id="nodeSSHPort" value="22">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SSH User</label>
+                            <input type="text" class="form-control" id="nodeSSHUser" value="root">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">SSH Password</label>
+                            <input type="password" class="form-control" id="nodeSSHPass"
+                                placeholder="Leave empty if using key">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">SSH Private Key</label>
+                            <textarea class="form-control font-monospace" id="nodeSSHKey" rows="4"
+                                placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;..."></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Ed25519 Public Key <small class="text-muted">(paste after running
+                                    pgw-node init on node)</small></label>
+                            <input type="text" class="form-control font-monospace" id="nodePublicKey"
+                                placeholder="hex or base64 encoded Ed25519 public key">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary" id="btnAddNode"><i class="bi bi-plus-lg me-1"></i>Add Node</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Deploy Log -->
+<div class="modal fade" id="modalDeployLog" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-terminal me-2"></i>Deploy Log — <span
+                        id="deployLogNodeName"></span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <pre id="deployLogContent"
+                    style="background:#1a1a2e;color:#a8ff78;padding:1rem;margin:0;min-height:300px;max-height:60vh;overflow-y:auto;font-size:12px;white-space:pre-wrap;"></pre>
+            </div>
+            <div class="modal-footer">
+                <span id="deployLogStatus" class="badge bg-secondary me-auto">checking...</span>
+                <button class="btn btn-outline-secondary btn-sm" onclick="NodeManager.refreshDeployLog()"><i
+                        class="bi bi-arrow-clockwise me-1"></i>Refresh</button>
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const NodeManager = (() => {
+        let currentDeployNodeId = null;
+
+        const token = () => {
+            const m = document.cookie.match(/pgw_jwt=([^;]+)/);
+            return m ? m[1] : '';
+        };
+        const headers = () => ({ 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token() });
+        const api = path => '/api' + path;
+
+        const statusBadge = (status) => {
+            const map = {
+                online: ['success', 'bi-circle-fill', 'Online'],
+                offline: ['secondary', 'bi-circle', 'Offline'],
+                deploying: ['warning', 'bi-arrow-repeat spin', 'Deploying'],
+                error: ['danger', 'bi-exclamation-circle', 'Error'],
+            };
+            const [cls, icon, label] = map[status] || ['secondary', 'bi-circle', status];
+            return `<span class="badge bg-label-${cls}"><i class="bi ${icon} me-1"></i>${label}</span>`;
+        };
+
+        const deployBadge = (ds) => {
+            const map = {
+                pending: ['secondary', 'Pending'],
+                deploying: ['warning', 'Deploying...'],
+                deployed: ['success', 'Deployed'],
+                failed: ['danger', 'Failed'],
+            };
+            const [cls, label] = map[ds] || ['secondary', ds];
+            return `<span class="badge bg-label-${cls}">${label}</span>`;
+        };
+
+        const timeSince = (ts) => {
+            if (!ts) return '—';
+            const diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            return `${Math.floor(diff / 3600)}h ago`;
+        };
+
+        async function refresh() {
+            const res = await fetch(api('/v1/nodes'), { headers: headers() });
+            const nodes = res.ok ? await res.json() : [];
+            renderCards(nodes);
+            renderTable(nodes);
+        }
+
+        function renderCards(nodes) {
+            const el = document.getElementById('nodeCards');
+            const msg = document.getElementById('noNodesMsg');
+            if (!nodes || nodes.length === 0) {
+                el.innerHTML = `<div class="col-12 text-center text-muted py-4" id="noNodesMsg">No nodes yet — click "Add Node" to get started.</div>`;
+                return;
+            }
+            msg && msg.remove();
+            const online = nodes.filter(n => n.status === 'online').length;
+            const offline = nodes.filter(n => n.status === 'offline').length;
+            const deploying = nodes.filter(n => n.status === 'deploying').length;
+            el.innerHTML = `
+      <div class="col-md-4"><div class="card border-0 shadow-sm text-center py-3">
+        <div class="card-body"><h3 class="fw-bold text-success">${online}</h3><p class="text-muted mb-0">Online</p></div>
+      </div></div>
+      <div class="col-md-4"><div class="card border-0 shadow-sm text-center py-3">
+        <div class="card-body"><h3 class="fw-bold text-secondary">${offline}</h3><p class="text-muted mb-0">Offline</p></div>
+      </div></div>
+      <div class="col-md-4"><div class="card border-0 shadow-sm text-center py-3">
+        <div class="card-body"><h3 class="fw-bold text-warning">${deploying}</h3><p class="text-muted mb-0">Deploying</p></div>
+      </div></div>`;
+        }
+
+        function renderTable(nodes) {
+            const tbody = document.getElementById('nodeTableBody');
+            if (!nodes || nodes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No nodes found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = nodes.map(n => `
+      <tr>
+        <td><strong>${n.name}</strong></td>
+        <td><code>${n.ssh_host || '—'}:${n.ssh_port || 22}</code></td>
+        <td>${statusBadge(n.status)}</td>
+        <td>${deployBadge(n.deploy_status)}</td>
+        <td><small class="text-muted">${n.version || '—'}</small></td>
+        <td><small class="text-muted">${timeSince(n.last_seen_at)}</small></td>
+        <td>
+          <div class="d-flex gap-1">
+            <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')">
+              <i class="bi bi-cloud-upload"></i>
+            </button>
+            <button class="btn btn-xs btn-outline-info" title="View Deploy Log" onclick="NodeManager.showDeployLog('${n.id}','${n.name}')">
+              <i class="bi bi-journal-text"></i>
+            </button>
+            <button class="btn btn-xs btn-outline-danger" title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>`).join('');
+        }
+
+        async function addNode() {
+            const body = {
+                name: document.getElementById('nodeName').value.trim(),
+                ssh_host: document.getElementById('nodeSSHHost').value.trim(),
+                ssh_port: parseInt(document.getElementById('nodeSSHPort').value) || 22,
+                ssh_user: document.getElementById('nodeSSHUser').value.trim() || 'root',
+                ssh_password: document.getElementById('nodeSSHPass').value,
+                ssh_key: document.getElementById('nodeSSHKey').value,
+                public_key: document.getElementById('nodePublicKey').value.trim(),
+            };
+            if (!body.name) { alert('Name is required'); return; }
+            const res = await fetch(api('/v1/nodes'), { method: 'POST', headers: headers(), body: JSON.stringify(body) });
+            if (res.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('modalAddNode')).hide();
+                document.getElementById('formAddNode').reset();
+                refresh();
+            } else {
+                const err = await res.json();
+                alert('Error: ' + (err.error || res.status));
+            }
+        }
+
+        async function deploy(nodeId, name) {
+            if (!confirm(`Deploy pgw-node stack to "${name}"?\nThis will SSH into the node and install all services.`)) return;
+            const res = await fetch(api(`/v1/nodes/${nodeId}/deploy`), { method: 'POST', headers: headers() });
+            if (res.ok) {
+                alert('Deploy started! Check the deploy log for progress.');
+                refresh();
+                setTimeout(() => showDeployLog(nodeId, name), 500);
+            } else {
+                alert('Deploy failed to start');
+            }
+        }
+
+        async function showDeployLog(nodeId, name) {
+            currentDeployNodeId = nodeId;
+            document.getElementById('deployLogNodeName').textContent = name;
+            document.getElementById('deployLogContent').textContent = 'Loading...';
+            const modal = new bootstrap.Modal(document.getElementById('modalDeployLog'));
+            modal.show();
+            await refreshDeployLog();
+        }
+
+        async function refreshDeployLog() {
+            if (!currentDeployNodeId) return;
+            const res = await fetch(api(`/v1/nodes/${currentDeployNodeId}/deploy/log`), { headers: headers() });
+            const text = res.ok ? await res.text() : 'Failed to load log';
+            const pre = document.getElementById('deployLogContent');
+            pre.textContent = text || '(empty)';
+            pre.scrollTop = pre.scrollHeight;
+
+            // Get node status
+            const nodeRes = await fetch(api(`/v1/nodes/${currentDeployNodeId}`), { headers: headers() });
+            if (nodeRes.ok) {
+                const node = await nodeRes.json();
+                const badge = document.getElementById('deployLogStatus');
+                const map = { deploying: 'warning', deployed: 'success', failed: 'danger', pending: 'secondary' };
+                badge.className = `badge bg-${map[node.deploy_status] || 'secondary'} me-auto`;
+                badge.textContent = node.deploy_status;
+            }
+        }
+
+        async function deleteNode(nodeId, name) {
+            if (!confirm(`Delete node "${name}"?`)) return;
+            const res = await fetch(api(`/v1/nodes/${nodeId}`), { method: 'DELETE', headers: headers() });
+            if (res.ok) { refresh(); }
+            else { alert('Delete failed'); }
+        }
+
+        document.getElementById('btnAddNode').addEventListener('click', addNode);
+
+        // Auto-refresh every 15s
+        refresh();
+        setInterval(refresh, 15000);
+
+        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode };
+    })();
+</script>
+
+<style>
+    .btn-xs {
+        padding: 0.2rem 0.4rem;
+        font-size: 0.75rem;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    .spin {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+</style>
+{{end}}

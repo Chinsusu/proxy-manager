@@ -111,11 +111,35 @@ func (s *sqliteStore) migrate() error {
 			created_at TEXT NOT NULL
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_income_received ON income(received_at DESC)`,
+		`CREATE TABLE IF NOT EXISTS nodes (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			public_key TEXT,
+			ssh_host TEXT,
+			ssh_port INTEGER NOT NULL DEFAULT 22,
+			ssh_user TEXT NOT NULL DEFAULT 'root',
+			ssh_password TEXT,
+			ssh_key TEXT,
+			status TEXT NOT NULL DEFAULT 'offline',
+			version TEXT,
+			last_seen_at TEXT,
+			deploy_status TEXT NOT NULL DEFAULT 'pending',
+			deploy_log TEXT,
+			deployed_at TEXT,
+			created_at TEXT NOT NULL
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate stmt %q: %w", stmt[:min(40, len(stmt))], err)
 		}
+	}
+	// Additive column migrations (idempotent — ignore 'duplicate column' errors)
+	for _, alter := range []string{
+		`ALTER TABLE proxies ADD COLUMN node_id TEXT`,
+		`ALTER TABLE mappings ADD COLUMN node_id TEXT`,
+	} {
+		_, _ = s.db.Exec(alter) // intentionally ignore error (column may already exist)
 	}
 	return nil
 }
@@ -543,6 +567,134 @@ func (s *sqliteStore) GetIncomeReport() types.IncomeReport {
 	}
 
 	return report
+}
+
+// ---------- Nodes ----------
+
+func (s *sqliteStore) ListNodes() []types.Node {
+	rows, err := s.db.Query(`SELECT id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,created_at FROM nodes ORDER BY created_at DESC`)
+	if err != nil { return nil }
+	defer rows.Close()
+	var out []types.Node
+	for rows.Next() {
+		out = append(out, scanNode(rows))
+	}
+	return out
+}
+
+func (s *sqliteStore) CreateNode(n types.Node) types.Node {
+	if n.ID == "" { n.ID = uuid.New().String() }
+	if n.SSHPort == 0 { n.SSHPort = 22 }
+	if n.SSHUser == "" { n.SSHUser = "root" }
+	if n.Status == "" { n.Status = "offline" }
+	if n.DeployStatus == "" { n.DeployStatus = "pending" }
+	n.CreatedAt = time.Now()
+	_, _ = s.db.Exec(
+		`INSERT INTO nodes(id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,deploy_status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,
+		n.ID, n.Name, n.PublicKey, n.SSHHost, n.SSHPort, n.SSHUser, n.SSHPassword, n.SSHKey,
+		n.Status, n.Version, n.DeployStatus, n.CreatedAt.UTC().Format(time.RFC3339Nano),
+	)
+	return n
+}
+
+func (s *sqliteStore) GetNode(id string) (types.Node, bool) {
+	rows, err := s.db.Query(`SELECT id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,created_at FROM nodes WHERE id=?`, id)
+	if err != nil { return types.Node{}, false }
+	defer rows.Close()
+	if !rows.Next() { return types.Node{}, false }
+	return scanNode(rows), true
+}
+
+func (s *sqliteStore) UpdateNode(n types.Node) (types.Node, bool) {
+	res, err := s.db.Exec(
+		`UPDATE nodes SET name=?,public_key=?,ssh_host=?,ssh_port=?,ssh_user=?,ssh_password=?,ssh_key=? WHERE id=?`,
+		n.Name, n.PublicKey, n.SSHHost, n.SSHPort, n.SSHUser, n.SSHPassword, n.SSHKey, n.ID,
+	)
+	if err != nil { return types.Node{}, false }
+	nn, _ := res.RowsAffected()
+	if nn == 0 { return types.Node{}, false }
+	updated, _ := s.GetNode(n.ID)
+	return updated, true
+}
+
+func (s *sqliteStore) DeleteNode(id string) bool {
+	res, _ := s.db.Exec(`DELETE FROM nodes WHERE id=?`, id)
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+func (s *sqliteStore) UpdateNodeStatus(id, status, version string, lastSeen time.Time) bool {
+	res, err := s.db.Exec(
+		`UPDATE nodes SET status=?, version=?, last_seen_at=? WHERE id=?`,
+		status, version, lastSeen.UTC().Format(time.RFC3339Nano), id,
+	)
+	if err != nil { return false }
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
+func (s *sqliteStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool {
+	var err error
+	if deployStatus == "deployed" {
+		now := time.Now().UTC().Format(time.RFC3339Nano)
+		_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deploy_log=?, deployed_at=? WHERE id=?`, deployStatus, deployLog, now, id)
+	} else {
+		_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deploy_log=? WHERE id=?`, deployStatus, deployLog, id)
+	}
+	return err == nil
+}
+
+func (s *sqliteStore) GetNodeAssignments(nodeID string) types.NodeAssignment {
+	result := types.NodeAssignment{NodeID: nodeID}
+	rows, err := s.db.Query(`
+		SELECT m.id, c.ip_cidr, m.local_redirect_port,
+		       p.id, p.label, p.type, p.host, p.port, p.username, p.password, p.enabled, p.status, p.latency_ms, p.exit_ip, p.last_checked_at
+		FROM mappings m
+		JOIN clients c ON c.id = m.client_id
+		JOIN proxies p ON p.id = m.proxy_id
+		WHERE m.node_id = ?
+		ORDER BY m.id`, nodeID)
+	if err != nil { return result }
+	defer rows.Close()
+	for rows.Next() {
+		var pair types.ProxyMappingPair
+		var pLabel, pUsername, pPassword, pExitIP, pLastChecked sql.NullString
+		var pLatencyMs sql.NullInt64
+		_ = rows.Scan(
+			&pair.MappingID, &pair.ClientCIDR, &pair.LocalPort,
+			&pair.Proxy.ID, &pLabel, &pair.Proxy.Type, &pair.Proxy.Host, &pair.Proxy.Port,
+			&pUsername, &pPassword, &pair.Proxy.Enabled, &pair.Proxy.Status,
+			&pLatencyMs, &pExitIP, &pLastChecked,
+		)
+		if pLabel.Valid { pair.Proxy.Label = pLabel.String }
+		if pUsername.Valid && pUsername.String != "" { pair.Proxy.Username = &pUsername.String }
+		if pPassword.Valid && pPassword.String != "" { pair.Proxy.Password = &pPassword.String }
+		if pLatencyMs.Valid { v := int(pLatencyMs.Int64); pair.Proxy.LatencyMs = &v }
+		if pExitIP.Valid && pExitIP.String != "" { pair.Proxy.ExitIP = &pExitIP.String }
+		result.Assignments = append(result.Assignments, pair)
+	}
+	return result
+}
+
+// scanNode reads one row from a *sql.Rows into types.Node.
+func scanNode(rows *sql.Rows) types.Node {
+	var n types.Node
+	var pubKey, sshPass, sshKey, version, lastSeenAt, deployLog, deployedAt sql.NullString
+	var createdAt string
+	_ = rows.Scan(
+		&n.ID, &n.Name, &pubKey, &n.SSHHost, &n.SSHPort, &n.SSHUser,
+		&sshPass, &sshKey, &n.Status, &version,
+		&lastSeenAt, &n.DeployStatus, &deployLog, &deployedAt, &createdAt,
+	)
+	if pubKey.Valid { n.PublicKey = pubKey.String }
+	if sshPass.Valid { n.SSHPassword = sshPass.String }
+	if sshKey.Valid { n.SSHKey = sshKey.String }
+	if version.Valid { n.Version = version.String }
+	if deployLog.Valid { n.DeployLog = deployLog.String }
+	if lastSeenAt.Valid { n.LastSeenAt = parseTime(lastSeenAt.String) }
+	if deployedAt.Valid { n.DeployedAt = parseTime(deployedAt.String) }
+	if t := parseTime(createdAt); t != nil { n.CreatedAt = *t }
+	return n
 }
 
 // Ensure sqliteStore satisfies Store interface at compile time.

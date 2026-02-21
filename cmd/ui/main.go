@@ -83,6 +83,7 @@ func main() {
 	http.HandleFunc("/", handleRoot)
 	http.HandleFunc("/manage", handleManage)
 	http.HandleFunc("/proxies", handleProxies)
+	http.HandleFunc("/nodes", handleNodes)
 	http.HandleFunc("/emails", handleEmails)
 	http.HandleFunc("/paypal", handlePayPal)
 	http.HandleFunc("/income", handleIncome)
@@ -174,6 +175,14 @@ func handleIncome(w http.ResponseWriter, r *http.Request) {
 	renderPage(w, "income.html", PageData{ActivePage: "income", Title: "Income"})
 }
 
+func handleNodes(w http.ResponseWriter, r *http.Request) {
+	if !uiAuthorized(r) {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	renderPage(w, "nodes.html", PageData{ActivePage: "nodes", Title: "Nodes"})
+}
+
 func handleReports(w http.ResponseWriter, r *http.Request) {
 	if !uiAuthorized(r) {
 		http.Redirect(w, r, "/login", http.StatusFound)
@@ -181,6 +190,7 @@ func handleReports(w http.ResponseWriter, r *http.Request) {
 	}
 	renderPage(w, "reports.html", PageData{ActivePage: "reports", Title: "Reports"})
 }
+
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {

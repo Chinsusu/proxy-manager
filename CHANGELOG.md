@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.7.0] - 2026-02-21
+
+### Added
+- **Node Management** — manage distributed VPS proxy nodes from master server
+  - `Node` entity: SSH credentials (AES-256-GCM encrypted at rest), status tracking, deploy log
+  - New SQLite table: `nodes`; additive `node_id` column on `proxies` and `mappings`
+  - **9 new API endpoints** under `/v1/nodes/*`
+    - Admin (JWT): CRUD, SSH deploy trigger, deploy log
+    - Node agent (Ed25519): assignments pull, heartbeat push
+  - **Ed25519 authentication**: nodes sign requests with `X-Node-ID` / `X-Node-TS` / `X-Node-Sig` headers (±60s replay protection)
+  - **SSH auto-deploy** (`pkg/deploy/ssh.go`): 5-step automated deployment (apt deps → binaries → env files → systemd units → init + start)
+  - **Nodes UI page** (`/nodes`): stats cards, node table, deploy trigger, deploy log modal (auto-refreshes)
+  - Sidebar link for Nodes page
+- **`pgw-node` sync daemon** (new repo `github.com/Chinsusu/pgw-node`)
+  - `pgw-node init` — generate Ed25519 keypair
+  - `pgw-node pubkey` — print public key for registration
+  - Sync loop: poll assignments → reconcile local via pgw-agent → heartbeat (default every 15s)
+  - `deploy/install.sh` — one-liner install script
+  - Systemd service unit included
+
 ## [1.6.0] - 2026-02-20
 
 ### Added

@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -19,6 +22,7 @@ import (
 	"github.com/Chinsusu/proxy-server-local/pkg/auth"
 	"github.com/Chinsusu/proxy-server-local/pkg/check"
 	"github.com/Chinsusu/proxy-server-local/pkg/config"
+	"github.com/Chinsusu/proxy-server-local/pkg/deploy"
 	"github.com/Chinsusu/proxy-server-local/pkg/httpx"
 	"github.com/Chinsusu/proxy-server-local/pkg/logging"
 	"github.com/Chinsusu/proxy-server-local/pkg/store"
@@ -760,6 +764,226 @@ func main() {
 		}
 	})
 
+	// ---- Nodes ----
+
+	// authorizeNode verifies Ed25519 signature from node agent.
+	// Header: X-Node-ID, X-Node-Sig (hex), X-Node-TS (unix seconds)
+	authorizeNode := func(r *http.Request) (string, bool) {
+		nodeID := r.Header.Get("X-Node-ID")
+		sigHex := r.Header.Get("X-Node-Sig")
+		tsStr := r.Header.Get("X-Node-TS")
+		if nodeID == "" || sigHex == "" || tsStr == "" {
+			return "", false
+		}
+		// Check timestamp freshness (±60s)
+		ts, err := strconv.ParseInt(tsStr, 10, 64)
+		if err != nil {
+			return "", false
+		}
+		diff := time.Now().Unix() - ts
+		if diff < -60 || diff > 60 {
+			return "", false
+		}
+		// Lookup node pubkey
+		node, ok := st.GetNode(nodeID)
+		if !ok || node.PublicKey == "" {
+			return "", false
+		}
+		// Decode pubkey + verify sig
+		pubKeyBytes, err := hexDecodeOrBase64(node.PublicKey)
+		if err != nil || len(pubKeyBytes) != 32 {
+			return "", false
+		}
+		sigBytes, err := hexDecodeOrBase64(sigHex)
+		if err != nil {
+			return "", false
+		}
+		message := fmt.Sprintf("%s:%s", nodeID, tsStr)
+		if !ed25519Verify(pubKeyBytes, []byte(message), sigBytes) {
+			return "", false
+		}
+		return nodeID, true
+	}
+
+	// GET+POST+PUT+DELETE /v1/nodes
+	http.HandleFunc("/v1/nodes", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			nodes := st.ListNodes()
+			// Derive online/offline from last_seen_at (<= 60s ago = online)
+			now := time.Now()
+			for i := range nodes {
+				if nodes[i].Status == "deploying" { continue }
+				if nodes[i].LastSeenAt != nil && now.Sub(*nodes[i].LastSeenAt) <= 60*time.Second {
+					nodes[i].Status = "online"
+				} else {
+					nodes[i].Status = "offline"
+				}
+				// Mask sensitive fields
+				nodes[i].SSHPassword = maskIfSet(nodes[i].SSHPassword)
+				nodes[i].SSHKey      = maskIfSet(nodes[i].SSHKey)
+			}
+			httpx.JSON(w, 200, nodes)
+		case http.MethodPost:
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			var n types.Node
+			if err := json.NewDecoder(r.Body).Decode(&n); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			if n.Name == "" {
+				httpx.JSON(w, 400, map[string]string{"error": "name required"}); return
+			}
+			// Encrypt SSH credentials
+			if n.SSHPassword != "" {
+				if enc, err := deploy.Encrypt(n.SSHPassword, cfg.JWTSecret); err == nil { n.SSHPassword = enc }
+			}
+			if n.SSHKey != "" {
+				if enc, err := deploy.Encrypt(n.SSHKey, cfg.JWTSecret); err == nil { n.SSHKey = enc }
+			}
+			created := st.CreateNode(n)
+			created.SSHPassword = maskIfSet(created.SSHPassword)
+			created.SSHKey      = maskIfSet(created.SSHKey)
+			httpx.JSON(w, 201, created)
+		default:
+			w.WriteHeader(405)
+		}
+	})
+
+	http.HandleFunc("/v1/nodes/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/v1/nodes/")
+		parts := strings.SplitN(path, "/", 2)
+		nodeID := parts[0]
+		sub := ""
+		if len(parts) > 1 { sub = parts[1] }
+
+		// ---- Node agent endpoints (Ed25519 auth) ----
+		if sub == "assignments" && r.Method == http.MethodGet {
+			if _, ok := authorizeNode(r); !ok {
+				httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+			}
+			httpx.JSON(w, 200, st.GetNodeAssignments(nodeID))
+			return
+		}
+
+		if sub == "heartbeat" && r.Method == http.MethodPost {
+			agentNodeID, ok := authorizeNode(r)
+			if !ok {
+				httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			var hb types.NodeHeartbeat
+			if err := json.NewDecoder(r.Body).Decode(&hb); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			_ = st.UpdateNodeStatus(agentNodeID, "online", hb.Version, time.Now())
+			// Update mapping states reported by node
+			for _, ms := range hb.Mappings {
+				_ = st.UpdateMappingState(ms.MappingID, ms.State, 0)
+				if ms.LatencyMs > 0 || ms.ProxyStatus != "" {
+					st.SetProxyTelemetry(ms.MappingID, types.ProxyStatus(ms.ProxyStatus), ms.LatencyMs, ms.ExitIP)
+				}
+			}
+			w.WriteHeader(204)
+			return
+		}
+
+		// ---- Deploy endpoints (admin JWT) ----
+		if _, ok := authorizeRequest(r, cfg.JWTSecret); !ok {
+			httpx.JSON(w, 401, map[string]string{"error": "unauthorized"}); return
+		}
+
+		if sub == "deploy" && r.Method == http.MethodPost {
+			node, ok := st.GetNode(nodeID)
+			if !ok {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			_ = st.UpdateNodeDeploy(nodeID, "deploying", "Deploy started...")
+			_ = st.UpdateNodeStatus(nodeID, "deploying", "", time.Now())
+			logChan := make(chan string, 200)
+			go func() {
+				var buf strings.Builder
+				for line := range logChan {
+					buf.WriteString(line + "\n")
+					_ = st.UpdateNodeDeploy(nodeID, "deploying", buf.String())
+				}
+			}()
+			go func() {
+				innerChan := make(chan string, 200)
+				go func() {
+					for line := range innerChan { logChan <- line }
+					close(logChan)
+				}()
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+				defer cancel()
+				masterURL := strings.TrimSpace(os.Getenv("PGW_MASTER_URL"))
+				if masterURL == "" { masterURL = "http://127.0.0.1:8080" }
+				deploy.MasterURL = masterURL
+				if err := deploy.DeployNode(ctx, node, cfg.JWTSecret, innerChan); err != nil {
+					_ = st.UpdateNodeDeploy(nodeID, "failed", err.Error())
+					_ = st.UpdateNodeStatus(nodeID, "error", "", time.Now())
+				} else {
+					_ = st.UpdateNodeStatus(nodeID, "offline", "", time.Now())
+				}
+			}()
+			httpx.JSON(w, 202, map[string]string{"status": "deploying"})
+			return
+		}
+
+		if sub == "deploy/log" && r.Method == http.MethodGet {
+			node, ok := st.GetNode(nodeID)
+			if !ok {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(200)
+			fmt.Fprint(w, node.DeployLog)
+			return
+		}
+
+		// ---- Node CRUD (admin) ----
+		switch r.Method {
+		case http.MethodGet:
+			node, ok := st.GetNode(nodeID)
+			if !ok {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			node.SSHPassword = maskIfSet(node.SSHPassword)
+			node.SSHKey      = maskIfSet(node.SSHKey)
+			httpx.JSON(w, 200, node)
+		case http.MethodPut:
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			var n types.Node
+			if err := json.NewDecoder(r.Body).Decode(&n); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"}); return
+			}
+			n.ID = nodeID
+			// Encrypt if new credentials provided (non-masked)
+			if n.SSHPassword != "" && n.SSHPassword != "****" {
+				if enc, err := deploy.Encrypt(n.SSHPassword, cfg.JWTSecret); err == nil { n.SSHPassword = enc }
+			}
+			if n.SSHKey != "" && n.SSHKey != "****" {
+				if enc, err := deploy.Encrypt(n.SSHKey, cfg.JWTSecret); err == nil { n.SSHKey = enc }
+			}
+			updated, ok := st.UpdateNode(n)
+			if !ok {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			updated.SSHPassword = maskIfSet(updated.SSHPassword)
+			updated.SSHKey      = maskIfSet(updated.SSHKey)
+			httpx.JSON(w, 200, updated)
+		case http.MethodDelete:
+			if !st.DeleteNode(nodeID) {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			w.WriteHeader(204)
+		default:
+			w.WriteHeader(405)
+		}
+	})
+
 	server := &http.Server{Addr: cfg.Addr}
 
 
@@ -1018,3 +1242,28 @@ func validateProxyType(proxyType string) error {
 		return fmt.Errorf("unsupported proxy type: %s (supported: http, socks5)", proxyType)
 	}
 }
+
+// hexDecodeOrBase64 attempts hex decode, falls back to standard base64.
+func hexDecodeOrBase64(s string) ([]byte, error) {
+	if b, err := hex.DecodeString(s); err == nil {
+		return b, nil
+	}
+	return base64.StdEncoding.DecodeString(s)
+}
+
+// ed25519Verify verifies an Ed25519 signature.
+func ed25519Verify(pubKey, message, sig []byte) bool {
+	if len(pubKey) != ed25519.PublicKeySize {
+		return false
+	}
+	return ed25519.Verify(ed25519.PublicKey(pubKey), message, sig)
+}
+
+// maskIfSet returns "****" if the value is non-empty (encrypted), else "".
+func maskIfSet(s string) string {
+	if s != "" {
+		return "****"
+	}
+	return ""
+}
+

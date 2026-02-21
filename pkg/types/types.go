@@ -38,6 +38,7 @@ type Mapping struct {
 	ID                string     `json:"id"`
 	ClientID          string     `json:"client_id"`
 	ProxyID           string     `json:"proxy_id"`
+	NodeID            *string    `json:"node_id,omitempty"`
 	Protocol          string     `json:"protocol"` // "http" | "socks5"
 	LocalRedirectPort int        `json:"local_redirect_port"`
 	State             string     `json:"state"` // "APPLIED" | "PENDING" | "FAILED"
@@ -45,11 +46,12 @@ type Mapping struct {
 }
 
 type MappingView struct {
-	ID                string `json:"id"`
-	Client            Client `json:"client"`
-	Proxy             Proxy  `json:"proxy"`
-	State             string `json:"state"`
-	LocalRedirectPort int    `json:"local_redirect_port"`
+	ID                string  `json:"id"`
+	Client            Client  `json:"client"`
+	Proxy             Proxy   `json:"proxy"`
+	NodeID            *string `json:"node_id,omitempty"`
+	State             string  `json:"state"`
+	LocalRedirectPort int     `json:"local_redirect_port"`
 }
 
 // ---------- Email Management ----------
@@ -98,4 +100,51 @@ type IncomeReport struct {
 	BySource map[string]float64 `json:"by_source"`
 	ByMonth  map[string]float64 `json:"by_month"` // "2026-02" -> sum USD
 	Count    int                `json:"count"`
+}
+
+// ---------- Node Management ----------
+
+type Node struct {
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	PublicKey    string     `json:"public_key,omitempty"`
+	SSHHost      string     `json:"ssh_host"`
+	SSHPort      int        `json:"ssh_port"`
+	SSHUser      string     `json:"ssh_user"`
+	SSHPassword  string     `json:"ssh_password,omitempty"` // AES-256-GCM encrypted at rest
+	SSHKey       string     `json:"ssh_key,omitempty"`      // AES-256-GCM encrypted at rest
+	Status       string     `json:"status"`                 // "online" | "offline" | "deploying" | "error"
+	Version      string     `json:"version,omitempty"`      // pgw-node version
+	LastSeenAt   *time.Time `json:"last_seen_at,omitempty"`
+	DeployStatus string     `json:"deploy_status"` // "pending" | "deploying" | "deployed" | "failed"
+	DeployLog    string     `json:"deploy_log,omitempty"`
+	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// NodeAssignment is returned to node agents via GET /v1/nodes/{id}/assignments
+type NodeAssignment struct {
+	NodeID      string             `json:"node_id"`
+	Assignments []ProxyMappingPair `json:"assignments"`
+}
+
+type ProxyMappingPair struct {
+	MappingID  string `json:"mapping_id"`
+	ClientCIDR string `json:"client_cidr"`
+	LocalPort  int    `json:"local_port"`
+	Proxy      Proxy  `json:"proxy"`
+}
+
+// NodeHeartbeat is sent from node agent via POST /v1/nodes/{id}/heartbeat
+type NodeHeartbeat struct {
+	Version  string                `json:"version"`
+	Mappings []MappingStatusReport `json:"mappings"`
+}
+
+type MappingStatusReport struct {
+	MappingID   string `json:"mapping_id"`
+	State       string `json:"state"`
+	ProxyStatus string `json:"proxy_status"`
+	LatencyMs   int    `json:"latency_ms"`
+	ExitIP      string `json:"exit_ip"`
 }
