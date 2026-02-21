@@ -66,23 +66,36 @@ Review the staged files — make sure nothing unexpected is included.
 ---
 
 ### 5. Commit
-**IMPORTANT:** Use a **short-lived subshell** to avoid the `git commit` hanging bug when run in background. Use `-m` flag only, never open an editor:
+**IMPORTANT:** Use `timeout 30` to prevent git commit from hanging. The `-m` flag + `GIT_EDITOR=true` should be enough, but background execution can sometimes cause a hang. With `timeout 30`, the command exits after 30 seconds if it doesn't complete — but **the commit often succeeds silently** even if the tool reports "running". Always check `git log --oneline -2` after.
 
 // turbo
 ```bash
-cd /opt/proxy-server-local && GIT_EDITOR=true git commit -m "feat/fix/chore: short description (vX.Y.Z)
+cd /opt/proxy-server-local && timeout 30 git commit -m "feat/fix/chore: short description (vX.Y.Z)
 
 - Bullet point detail 1
-- Bullet point detail 2"
+- Bullet point detail 2" 2>&1 || true
 ```
 
-After running, immediately verify with:
+After running, immediately verify:
 // turbo
 ```bash
-cd /opt/proxy-server-local && git log --oneline -3
+cd /opt/proxy-server-local && git log --oneline -2
 ```
 
-If the latest commit hash matches HEAD, commit succeeded.
+If HEAD shows the new commit message → commit succeeded. The `|| true` prevents tool failure even if timeout fires.
+
+**If commit appears stuck (> 10s):**
+// turbo
+```bash
+pkill -f "git commit" 2>/dev/null; cd /opt/proxy-server-local && git log --oneline -2
+```
+If the commit shows in the log → it already committed, just push.
+
+**If index.lock exists (from crashed commit):**
+// turbo
+```bash
+rm -f /opt/proxy-server-local/.git/index.lock && cd /opt/proxy-server-local && timeout 30 git commit -m "your message" 2>&1 || true
+```
 
 ---
 
@@ -107,6 +120,7 @@ After push, verify commit is on remote:
 ```bash
 cd /opt/proxy-server-local && git log --oneline origin/main -3
 ```
+
 
 
 ## Troubleshooting
