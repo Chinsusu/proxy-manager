@@ -297,13 +297,15 @@
         }
 
         async function refresh() {
-            const [nodesRes, proxiesRes] = await Promise.all([
+            const [nodesRes, proxiesRes, mappingsRes] = await Promise.all([
                 fetch(api('/v1/nodes'), { headers: hdr() }),
                 fetch(api('/v1/proxies'), { headers: hdr() }),
+                fetch(api('/v1/mappings'), { headers: hdr() }),
             ]);
 
             const nodes = nodesRes.ok ? (await nodesRes.json() || []) : [];
             const proxies = proxiesRes.ok ? (await proxiesRes.json() || []) : [];
+            const mappings = mappingsRes.ok ? (await mappingsRes.json() || []) : [];
 
             document.getElementById('stat-online').textContent = nodes.filter(n => n.status === 'online').length;
             document.getElementById('stat-offline').textContent = nodes.filter(n => n.status === 'offline').length;
@@ -318,6 +320,7 @@
 
             container.innerHTML = nodes.map(n => {
                 const nodeProxies = proxies.filter(p => p.node_id === n.id);
+                const nodeMappings = mappings.filter(m => m.proxy && nodeProxies.some(p => p.id === m.proxy.id));
 
                 return `<div class="card mb-3 node-card status-${n.status}">
                 <div class="card-header d-flex align-items-center justify-content-between py-2">
@@ -336,13 +339,29 @@
                     </div>
                 </div>
                 <div class="card-body p-0">
-                    <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
-                        <span class="small fw-semibold text-muted"><i class="bi bi-diagram-3 me-1"></i>Proxies
-                            <span class="badge bg-label-primary ms-1">${nodeProxies.length}</span>
-                        </span>
-                    </div>
-                    <div class="px-2 pb-2">
-                        ${renderProxiesTable(nodeProxies)}
+                    <div class="row g-0">
+                        <!-- Proxies panel -->
+                        <div class="col-md-6 border-end">
+                            <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
+                                <span class="small fw-semibold text-muted"><i class="bi bi-diagram-3 me-1"></i>Proxies
+                                    <span class="badge bg-label-primary ms-1">${nodeProxies.length}</span>
+                                </span>
+                            </div>
+                            <div class="px-2 pb-2">
+                                ${renderProxiesTable(nodeProxies)}
+                            </div>
+                        </div>
+                        <!-- Mappings panel -->
+                        <div class="col-md-6">
+                            <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
+                                <span class="small fw-semibold text-muted"><i class="bi bi-arrow-left-right me-1"></i>Mappings
+                                    <span class="badge bg-label-primary ms-1">${nodeMappings.length}</span>
+                                </span>
+                            </div>
+                            <div class="px-2 pb-2">
+                                ${renderMappingsTable(nodeMappings, n.id, nodeProxies)}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>`;
