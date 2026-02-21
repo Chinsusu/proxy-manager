@@ -5,6 +5,7 @@ class PGWManager {
     this.proxies = [];
     this.clients = [];
     this.mappings = [];
+    this.nodes = [];
     this.loading = false;
     // sorting state (persisted)
     this.pSort = 'address'; this.pAsc = true;
@@ -109,16 +110,19 @@ class PGWManager {
     this.loading = true;
     let _spinnerTO = setTimeout(() => this.showLoading(true), 700);
 
+
     try {
-      const [proxies, clients, mappings] = await Promise.all([
+      const [proxies, clients, mappings, nodes] = await Promise.all([
         this.apiCall(`${this.apiBase}/v1/proxies`),
         this.apiCall(`${this.apiBase}/v1/clients`),
-        this.apiCall(`${this.apiBase}/v1/mappings/active`)
+        this.apiCall(`${this.apiBase}/v1/mappings/active`),
+        this.apiCall(`${this.apiBase}/v1/nodes`).catch(() => []),
       ]);
 
       this.proxies = proxies || [];
       this.clients = clients || [];
       this.mappings = mappings || [];
+      this.nodes = nodes || [];
 
       this.renderStats();
       this.renderProxies();
@@ -392,10 +396,19 @@ class PGWManager {
 
     const stateBadge = this.createStatusBadge(mapping.state || 'PENDING');
 
+    // Build node inline-select
+    const currentNode = mapping.node_id || '';
+    const nodeOpts = [`<option value="">— no node —</option>`,
+      ...this.nodes.map(n => `<option value="${n.id}" ${n.id === currentNode ? 'selected' : ''}>${n.label || n.ssh_host}</option>`)
+    ].join('');
+    const nodeSelect = `<select class="form-select form-select-sm" style="min-width:120px"
+      onchange="pgw.assignNode('${mapping.id}', this.value)">${nodeOpts}</select>`;
+
     tr.innerHTML = `
       <td><code>${mapping.id.slice(0, 8)}</code></td>
       <td>${mapping.client?.ip_cidr || '—'}</td>
       <td>${proxyAddress}</td>
+      <td>${nodeSelect}</td>
       <td>${stateBadge}</td>
       <td>${mapping.local_redirect_port || '—'}</td>
       <td>
@@ -410,28 +423,38 @@ class PGWManager {
 
   renderClients() {
     const select = document.getElementById('select-proxy');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Select proxy server...</option>';
-
-    const used = new Set((this.mappings || []).map(m => m && m.proxy ? m.proxy.id : null).filter(Boolean));
-    const available = (this.proxies || []).filter(p => !used.has(p.id));
-
-    if (!available || available.length === 0) {
-      const opt = document.createElement('option');
-      opt.disabled = true;
-      opt.textContent = 'No available proxies (all mapped)';
-      select.appendChild(opt);
-      return;
+    if (select) {
+      select.innerHTML = '<option value="">Select proxy server...</option>';
+      const used = new Set((this.mappings || []).map(m => m && m.proxy ? m.proxy.id : null).filter(Boolean));
+      const available = (this.proxies || []).filter(p => !used.has(p.id));
+      if (!available || available.length === 0) {
+        const opt = document.createElement('option');
+        opt.disabled = true;
+        opt.textContent = 'No available proxies (all mapped)';
+        select.appendChild(opt);
+      } else {
+        available.forEach(proxy => {
+          const option = document.createElement('option');
+          option.value = proxy.id;
+          const statusIndicator = proxy.status === 'OK' ? '✓' : proxy.status === 'DEGRADED' ? '⚠' : '✗';
+          option.textContent = `${statusIndicator} ${proxy.host}:${proxy.port} (${proxy.type})`;
+          select.appendChild(option);
+        });
+      }
     }
 
-    available.forEach(proxy => {
-      const option = document.createElement('option');
-      option.value = proxy.id;
-      const statusIndicator = proxy.status === 'OK' ? '✓' : proxy.status === 'DEGRADED' ? '⚠' : '✗';
-      option.textContent = `${statusIndicator} ${proxy.host}:${proxy.port} (${proxy.type})`;
-      select.appendChild(option);
-    });
+    // Populate node dropdown in create-mapping form
+    const nodeSelect = document.getElementById('select-node');
+    if (nodeSelect) {
+      nodeSelect.innerHTML = '<option value="">-- Không gán node --</option>';
+      (this.nodes || []).forEach(n => {
+        const opt = document.createElement('option');
+        opt.value = n.id;
+        const status = n.status === 'online' ? '🟢' : n.status === 'deploying' ? '🟡' : '🔴';
+        opt.textContent = `${status} ${n.label || n.ssh_host}`;
+        nodeSelect.appendChild(opt);
+      });
+    }
   }
   detectProxyType(originalLine, host, port) {
     // Check for explicit type prefix
@@ -565,11 +588,13 @@ class PGWManager {
       }
 
       // Create mapping
+      const nodeId = formData.get('node_id') || '';
       await this.apiCall(`${this.apiBase}/v1/mappings`, {
         method: 'POST',
         body: JSON.stringify({
           client_id: clientId,
-          proxy_id: proxyId
+          proxy_id: proxyId,
+          ...(nodeId ? { node_id: nodeId } : {})
         })
       });
 
@@ -582,6 +607,19 @@ class PGWManager {
 
     } catch (error) {
       console.error('Failed to create mapping:', error);
+    }
+  }
+
+  async assignNode(mappingId, nodeId) {
+    try {
+      await this.apiCall(`${this.apiBase}/v1/mappings/${mappingId}/node`, {
+        method: 'PUT',
+        body: JSON.stringify({ node_id: nodeId })
+      });
+      this.showAlert(nodeId ? 'Node assigned' : 'Node unassigned', 'success');
+      this.loadData();
+    } catch (error) {
+      console.error('Failed to assign node:', error);
     }
   }
 
@@ -821,7 +859,7 @@ class EmailManager {
       if (!res.ok) throw new Error(res.statusText);
       this.data = await res.json() || [];
       this.render();
-    } catch(e) { console.error('emails load:', e); }
+    } catch (e) { console.error('emails load:', e); }
   }
 
   async addEmail() {
@@ -834,14 +872,14 @@ class EmailManager {
     try {
       const res = await fetch('/api/v1/emails', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ address, provider, password, recovery_email: recovery, note, status:'active' })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, provider, password, recovery_email: recovery, note, status: 'active' })
       });
       if (!res.ok) throw new Error(await res.text());
       document.getElementById('form-email').reset();
       this.pgw.showToast('Email added', 'success');
       await this.load();
-    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+    } catch (e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
   }
 
   async deleteEmail(id) {
@@ -850,7 +888,7 @@ class EmailManager {
       await fetch('/api/v1/emails/' + id, { method: 'DELETE' });
       this.pgw.showToast('Deleted', 'success');
       await this.load();
-    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+    } catch (e) { this.pgw.showToast('Error', 'danger'); }
   }
 
   render() {
@@ -862,20 +900,20 @@ class EmailManager {
       tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No emails yet</td></tr>'; return;
     }
     const statusBadge = s => {
-      const m = {active:'success',disabled:'secondary',banned:'danger'};
-      return `<span class="badge bg-label-${m[s]||'secondary'}">${s}</span>`;
+      const m = { active: 'success', disabled: 'secondary', banned: 'danger' };
+      return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
     };
     const providerIcon = p => {
-      const m = {gmail:'google',outlook:'microsoft',yahoo:'yahoo'};
+      const m = { gmail: 'google', outlook: 'microsoft', yahoo: 'yahoo' };
       return m[p] || p;
     };
     tbody.innerHTML = this.data.map(e => `
       <tr>
         <td><span class="fw-medium">${e.address}</span></td>
-        <td><span class="badge bg-label-info">${e.provider||'other'}</span></td>
-        <td>${statusBadge(e.status||'active')}</td>
+        <td><span class="badge bg-label-info">${e.provider || 'other'}</span></td>
+        <td>${statusBadge(e.status || 'active')}</td>
         <td>${e.paypal_id ? '<span class="badge bg-label-warning">Linked</span>' : '<span class="text-muted">—</span>'}</td>
-        <td class="text-muted small">${e.note||'—'}</td>
+        <td class="text-muted small">${e.note || '—'}</td>
         <td class="text-muted small">${new Date(e.created_at).toLocaleDateString('vi-VN')}</td>
         <td>
           <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.emailMgr.deleteEmail('${e.id}')" title="Delete">
@@ -904,7 +942,7 @@ class PayPalManager {
       this.data = await res.json() || [];
       this.render();
       return this.data;
-    } catch(e) { console.error('paypals load:', e); return []; }
+    } catch (e) { console.error('paypals load:', e); return []; }
   }
 
   async addPayPal() {
@@ -919,14 +957,14 @@ class PayPalManager {
     try {
       const res = await fetch('/api/v1/paypals', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, owner_name, balance, currency, status, verified, note })
       });
       if (!res.ok) throw new Error(await res.text());
       document.getElementById('form-paypal').reset();
       this.pgw.showToast('PayPal added', 'success');
       await this.load();
-    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+    } catch (e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
   }
 
   async deletePayPal(id) {
@@ -935,7 +973,7 @@ class PayPalManager {
       await fetch('/api/v1/paypals/' + id, { method: 'DELETE' });
       this.pgw.showToast('Deleted', 'success');
       await this.load();
-    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+    } catch (e) { this.pgw.showToast('Error', 'danger'); }
   }
 
   render() {
@@ -947,17 +985,17 @@ class PayPalManager {
       tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No PayPal accounts yet</td></tr>'; return;
     }
     const statusBadge = s => {
-      const m = {active:'success',limited:'warning',suspended:'danger'};
-      return `<span class="badge bg-label-${m[s]||'secondary'}">${s}</span>`;
+      const m = { active: 'success', limited: 'warning', suspended: 'danger' };
+      return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
     };
     tbody.innerHTML = this.data.map(p => `
       <tr>
         <td><span class="fw-medium">${p.email}</span></td>
-        <td>${p.owner_name||'<span class="text-muted">—</span>'}</td>
-        <td class="fw-semibold text-success">$${(p.balance||0).toFixed(2)} <span class="text-muted small">${p.currency||'USD'}</span></td>
-        <td>${statusBadge(p.status||'active')}</td>
+        <td>${p.owner_name || '<span class="text-muted">—</span>'}</td>
+        <td class="fw-semibold text-success">$${(p.balance || 0).toFixed(2)} <span class="text-muted small">${p.currency || 'USD'}</span></td>
+        <td>${statusBadge(p.status || 'active')}</td>
         <td>${p.verified ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle text-muted"></i>'}</td>
-        <td class="text-muted small">${p.note||'—'}</td>
+        <td class="text-muted small">${p.note || '—'}</td>
         <td class="text-muted small">${new Date(p.created_at).toLocaleDateString('vi-VN')}</td>
         <td>
           <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.paypalMgr.deletePayPal('${p.id}')" title="Delete">
@@ -978,7 +1016,7 @@ class IncomeManager {
     document.getElementById('form-income')?.addEventListener('submit', e => { e.preventDefault(); this.addIncome(); });
     // Set default received_at to now
     const dtEl = document.getElementById('income-received-at');
-    if (dtEl) dtEl.value = new Date().toISOString().slice(0,16);
+    if (dtEl) dtEl.value = new Date().toISOString().slice(0, 16);
 
     await Promise.all([this.loadPayPals(), this.load()]);
     this.updateSummary();
@@ -993,7 +1031,7 @@ class IncomeManager {
         const opts = this.paypals.map(p => `<option value="${p.id}">${p.email}</option>`).join('');
         sel.innerHTML = '<option value="">(none)</option>' + opts;
       }
-    } catch(e) {}
+    } catch (e) { }
   }
 
   async load() {
@@ -1002,7 +1040,7 @@ class IncomeManager {
       if (!res.ok) throw new Error(res.statusText);
       this.data = await res.json() || [];
       this.render();
-    } catch(e) { console.error('income load:', e); }
+    } catch (e) { console.error('income load:', e); }
   }
 
   async addIncome() {
@@ -1020,16 +1058,16 @@ class IncomeManager {
       if (paypal_id) body.paypal_id = paypal_id;
       const res = await fetch('/api/v1/income', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       if (!res.ok) throw new Error(await res.text());
       document.getElementById('form-income').reset();
-      if (receivedAtEl) receivedAtEl.value = new Date().toISOString().slice(0,16);
+      if (receivedAtEl) receivedAtEl.value = new Date().toISOString().slice(0, 16);
       this.pgw.showToast('Income recorded', 'success');
       await this.load();
       this.updateSummary();
-    } catch(e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
+    } catch (e) { this.pgw.showToast('Error: ' + e.message, 'danger'); }
   }
 
   async deleteIncome(id) {
@@ -1039,21 +1077,21 @@ class IncomeManager {
       this.pgw.showToast('Deleted', 'success');
       await this.load();
       this.updateSummary();
-    } catch(e) { this.pgw.showToast('Error', 'danger'); }
+    } catch (e) { this.pgw.showToast('Error', 'danger'); }
   }
 
   updateSummary() {
-    const total = this.data.reduce((s, i) => s + (i.amount||0), 0);
+    const total = this.data.reduce((s, i) => s + (i.amount || 0), 0);
     const now = new Date();
-    const thisMonth = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    const thisMonth = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
     const monthTotal = this.data
       .filter(i => i.received_at && i.received_at.startsWith(thisMonth))
-      .reduce((s, i) => s + (i.amount||0), 0);
+      .reduce((s, i) => s + (i.amount || 0), 0);
     const paypalTotal = this.data
       .filter(i => i.source === 'paypal')
-      .reduce((s, i) => s + (i.amount||0), 0);
+      .reduce((s, i) => s + (i.amount || 0), 0);
 
-    const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     set('income-total', '$' + total.toFixed(2));
     set('income-month', '$' + monthTotal.toFixed(2));
     set('income-count', this.data.length);
@@ -1067,18 +1105,18 @@ class IncomeManager {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No income recorded yet</td></tr>'; return;
     }
     const srcBadge = s => {
-      const m = {paypal:'warning',bank:'primary',crypto:'info',other:'secondary'};
-      return `<span class="badge bg-label-${m[s]||'secondary'}">${s||'other'}</span>`;
+      const m = { paypal: 'warning', bank: 'primary', crypto: 'info', other: 'secondary' };
+      return `<span class="badge bg-label-${m[s] || 'secondary'}">${s || 'other'}</span>`;
     };
     const ppMap = {};
     this.paypals.forEach(p => ppMap[p.id] = p.email);
     tbody.innerHTML = this.data.map(i => `
       <tr>
         <td class="text-muted small">${new Date(i.received_at).toLocaleString('vi-VN')}</td>
-        <td class="fw-semibold text-success">$${(i.amount||0).toFixed(2)} <span class="text-muted small">${i.currency||'USD'}</span></td>
+        <td class="fw-semibold text-success">$${(i.amount || 0).toFixed(2)} <span class="text-muted small">${i.currency || 'USD'}</span></td>
         <td>${srcBadge(i.source)}</td>
-        <td class="text-muted small">${i.paypal_id ? (ppMap[i.paypal_id]||i.paypal_id) : '—'}</td>
-        <td class="text-muted small">${i.description||'—'}</td>
+        <td class="text-muted small">${i.paypal_id ? (ppMap[i.paypal_id] || i.paypal_id) : '—'}</td>
+        <td class="text-muted small">${i.description || '—'}</td>
         <td>
           <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.incomeMgr.deleteIncome('${i.id}')" title="Delete">
             <i class="bi bi-trash"></i>
@@ -1093,7 +1131,7 @@ class IncomeManager {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   const path = window.location.pathname;
-  const pgw = window.pgw || { showToast: (m,t) => console.log(t,m) };
+  const pgw = window.pgw || { showToast: (m, t) => console.log(t, m) };
 
   if (path === '/emails') {
     window.emailMgr = new EmailManager(pgw);

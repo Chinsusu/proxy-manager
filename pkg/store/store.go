@@ -28,6 +28,7 @@ type Store interface {
 	CreateMapping(m types.Mapping) (types.MappingView, bool)
 	DeleteMapping(id string) bool
 	UpdateMappingState(id string, state string, localPort int) bool
+	UpdateMappingNode(id, nodeID string) bool
 
 	// Telemetry
 	SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string)
@@ -251,6 +252,19 @@ func (s *memoryStore) UpdateMappingState(id string, state string, localPort int)
 		}
 	}
 	if localPort > 0 { m.LocalRedirectPort = localPort }
+	s.mappings[id] = m
+	return true
+}
+
+func (s *memoryStore) UpdateMappingNode(id, nodeID string) bool {
+	s.mu.Lock(); defer s.mu.Unlock()
+	m, ok := s.mappings[id]
+	if !ok { return false }
+	if nodeID == "" {
+		m.NodeID = nil
+	} else {
+		m.NodeID = &nodeID
+	}
 	s.mappings[id] = m
 	return true
 }

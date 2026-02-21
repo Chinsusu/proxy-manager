@@ -41,16 +41,41 @@ Base: `http://127.0.0.1:8080`
   - **Được dùng bởi Forwarder** để resolve upstream proxy theo `LocalRedirectPort`
 - `POST /v1/mappings` body:
   ```json
-  {"client_id":"...","proxy_id":"..."}
+  {"client_id":"...","proxy_id":"...","node_id":"<optional-node-uuid>"}
   ```
+  - `node_id` (tùy chọn): gán proxy này vào node VPS ngay khi tạo
   - API tự gán `local_redirect_port` (1 client = 1 port cố định, dải 15001–15999)
   - Health-check upstream trước khi apply; nếu fail → `state=FAILED`
   - → `409` nếu proxy đã có mapping khác
   - → `201 MappingView`
+- `PUT /v1/mappings/{id}/node` body: `{"node_id":"<uuid>"}` hoặc `{"node_id":""}` để unassign
+  - Gán hoặc bỏ node VPS khỏi một mapping đã tồn tại
+  - → `204 No Content`
+  - → `404` nếu mapping không tồn tại
 - `POST /v1/mappings/state/{id}` body: `{"state":"APPLIED|PENDING|FAILED","local_redirect_port":15001}`
   - **Chỉ dành cho Agent** gọi sau khi reconcile (role `admin` hoặc `agent`)
   - → `204 No Content`
 - `DELETE /v1/mappings/{id}` → `204 No Content` (async: cleanup flag file + stop forwarder + reconcile)
+
+## Nodes
+- `GET /v1/nodes` → `[]Node` (admin JWT)
+- `POST /v1/nodes` body:
+  ```json
+  {"label":"VPS SG","ssh_host":"192.168.1.111","ssh_port":22,"ssh_user":"root","ssh_password":"...","public_key":"<Ed25519 hex, tùy chọn>"}
+  ```
+  - → `201 Node`
+- `GET /v1/nodes/{id}` → `Node`
+- `PUT /v1/nodes/{id}` → `200 Node` (cập nhật label, ssh creds, public_key)
+- `DELETE /v1/nodes/{id}` → `204 No Content`
+- `POST /v1/nodes/{id}/deploy` — trigger SSH auto-deploy (async, logs stream vào `deploy_log`)
+  - → `202 {"status":"deploying"}`
+- `GET /v1/nodes/{id}/deploy/log` → `{"deploy_status":"...","deploy_log":"..."}` (polling)
+- `GET /v1/nodes/{id}/assignments` — **Node agent only** (Ed25519 signed): trả danh sách proxy assignments
+  - Headers: `X-Node-ID`, `X-Node-TS`, `X-Node-Sig`
+  - → `NodeAssignment {node_id, assignments: [{mapping_id, proxy}]}`
+- `POST /v1/nodes/{id}/heartbeat` — **Node agent only**: cập nhật `status=online`, `last_seen`, `version`
+  - Body: `{"version":"1.0.0"}`
+  - → `204 No Content`
 
 ## Agent (port :9090)
 - `GET /agent/reconcile` — apply nft idempotent, trả `"ok"`

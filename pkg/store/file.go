@@ -217,6 +217,20 @@ func (s *fileStore) UpdateMappingState(id string, state string, localPort int) b
 	return true
 }
 
+func (s *fileStore) UpdateMappingNode(id, nodeID string) bool {
+	s.mu.Lock(); defer s.mu.Unlock()
+	m, ok := s.state.Mappings[id]
+	if !ok { return false }
+	if nodeID == "" {
+		m.NodeID = nil
+	} else {
+		m.NodeID = &nodeID
+	}
+	s.state.Mappings[id] = m
+	_ = s.save()
+	return true
+}
+
 // ---------- Telemetry ----------
 
 func (s *fileStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {

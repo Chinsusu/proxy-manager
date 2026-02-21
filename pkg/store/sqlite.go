@@ -345,6 +345,19 @@ func (s *sqliteStore) DeleteMapping(id string) bool {
 	return n > 0
 }
 
+func (s *sqliteStore) UpdateMappingNode(id, nodeID string) bool {
+	var res sql.Result
+	var err error
+	if nodeID == "" {
+		res, err = s.db.Exec(`UPDATE mappings SET node_id=NULL WHERE id=?`, id)
+	} else {
+		res, err = s.db.Exec(`UPDATE mappings SET node_id=? WHERE id=?`, nodeID, id)
+	}
+	if err != nil { return false }
+	n, _ := res.RowsAffected()
+	return n > 0
+}
+
 func (s *sqliteStore) UpdateMappingState(id string, state string, localPort int) bool {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var res sql.Result

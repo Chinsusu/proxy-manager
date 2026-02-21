@@ -568,11 +568,31 @@ func main() {
 		if r.URL.Path == "/v1/mappings" {
 			return
 		}
+
+		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+
+		// PUT /v1/mappings/{id}/node — assign or unassign a node
+		if r.Method == http.MethodPut && len(parts) == 4 && parts[3] == "node" {
+			id := parts[2]
+			var body struct {
+				NodeID string `json:"node_id"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "bad json"})
+				return
+			}
+			if !st.UpdateMappingNode(id, body.NodeID) {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"})
+				return
+			}
+			w.WriteHeader(204)
+			return
+		}
+
 		if r.Method != http.MethodDelete {
 			w.WriteHeader(405)
 			return
 		}
-		parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		if len(parts) != 3 || parts[0] != "v1" || parts[1] != "mappings" {
 			w.WriteHeader(404)
 			return
