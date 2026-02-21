@@ -223,6 +223,15 @@
             return `<span class="badge bg-label-${cls}" style="font-size:.7rem">${s || '?'}</span>`;
         };
 
+        // Rút gọn tên ISP — bỏ các suffix rườm rà
+        function truncateISP(isp) {
+            if (!isp) return '—';
+            return isp
+                .replace(/\s*(Telecommunications?|Communications?|Technologies?|Technology|Corp(?:oration)?|Ltd|Limited|Inc(?:orporated)?|S\.A\.|LLC|Co\.)\s*$/gi, '')
+                .replace(/\s*(Telecommunications?|Communications?|Technologies?|Technology)\s*/gi, ' ')
+                .trim() || isp;
+        }
+
         function renderProxiesTable(proxies) {
             if (!proxies.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có proxy nào được gán vào node này.</p>`;
             return `<table class="table table-sm node-detail-table mb-0">
@@ -233,7 +242,7 @@
                     <td>${proxyStatusBadge(p.status)}</td>
                     <td>${p.latency_ms != null ? p.latency_ms + 'ms' : '—'}</td>
                     <td><small class="text-muted">${p.region || '—'}</small></td>
-                    <td><small class="text-muted">${p.isp || '—'}</small></td>
+                    <td><small class="text-muted">${truncateISP(p.isp)}</small></td>
                     <td><button class="btn btn-xs btn-outline-secondary" onclick="NodeManager.unassignProxy('${p.id}')" title="Unassign"><i class="bi bi-x-circle"></i></button></td>
                 </tr>`).join('')}
                 </tbody>

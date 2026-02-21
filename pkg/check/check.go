@@ -158,7 +158,7 @@ func fetchExitIPAndGeo(ctx context.Context, proxyType, host string, port int, us
 	geoCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
 	geoReq, err := http.NewRequestWithContext(geoCtx, http.MethodGet,
-		"http://ip-api.com/json/"+ip+"?fields=country,regionName,isp", nil)
+		"http://ip-api.com/json/"+ip+"?fields=country,countryCode,regionName,isp", nil)
 	if err != nil {
 		return
 	}
@@ -169,21 +169,39 @@ func fetchExitIPAndGeo(ctx context.Context, proxyType, host string, port int, us
 	}
 	defer geoResp.Body.Close()
 	var geo struct {
-		Country    string `json:"country"`
-		RegionName string `json:"regionName"`
-		ISP        string `json:"isp"`
+		Country     string `json:"country"`
+		CountryCode string `json:"countryCode"`
+		RegionName  string `json:"regionName"`
+		ISP         string `json:"isp"`
 	}
 	if err := json.NewDecoder(geoResp.Body).Decode(&geo); err != nil {
 		return
 	}
-	if geo.Country != "" {
-		region = geo.Country
-		if geo.RegionName != "" {
-			region = geo.Country + " / " + geo.RegionName
+	if geo.CountryCode != "" {
+		flag := countryCodeToFlag(geo.CountryCode)
+		if geo.RegionName != "" && geo.RegionName != geo.Country {
+			region = flag + " " + geo.RegionName
+		} else if geo.Country != "" {
+			region = flag + " " + geo.Country
+		} else {
+			region = flag
 		}
+	} else if geo.Country != "" {
+		region = geo.Country
 	}
 	isp = geo.ISP
 	return
+}
+
+// countryCodeToFlag converts an ISO 3166-1 alpha-2 country code (e.g. "VN") to a flag emoji (e.g. "🇻🇳").
+func countryCodeToFlag(code string) string {
+	if len(code) != 2 {
+		return ""
+	}
+	code = strings.ToUpper(code)
+	r1 := rune(0x1F1E6 + int(code[0]-'A'))
+	r2 := rune(0x1F1E6 + int(code[1]-'A'))
+	return string([]rune{r1, r2})
 }
 
 // fetchExitIPViaHTTPProxy makes a separate HTTP request through the proxy to get the exit IP
