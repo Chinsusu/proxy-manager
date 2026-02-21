@@ -239,8 +239,37 @@
             </table>`;
         }
 
-        function renderMappingsTable(mappings) {
-            if (!mappings.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có mapping nào.</p>`;
+        function renderMappingsTable(mappings, nodeId, nodeProxies) {
+            // Build proxy options (only proxies of this node)
+            const proxyOpts = nodeProxies.map(p =>
+                `<option value="${p.id}">${p.host}:${p.port} (${p.type})</option>`
+            ).join('');
+            const canCreate = nodeProxies.length > 0;
+
+            const form = `<div class="px-2 pb-2 pt-1 border-top bg-light bg-opacity-50">
+              <form class="d-flex gap-2 align-items-end flex-wrap" onsubmit="event.preventDefault(); NodeManager.createMapping('${nodeId}', this)">
+                <div style="flex:1;min-width:120px">
+                  <label class="form-label mb-1" style="font-size:.7rem;font-weight:600;color:#6c757d">CLIENT IP</label>
+                  <input name="client_ip" type="text" class="form-control form-control-sm" placeholder="192.168.1.x"
+                    pattern="^((25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d\\d?)$" required
+                    ${canCreate ? '' : 'disabled'}>
+                </div>
+                <div style="flex:1;min-width:140px">
+                  <label class="form-label mb-1" style="font-size:.7rem;font-weight:600;color:#6c757d">PROXY</label>
+                  <select name="proxy_id" class="form-select form-select-sm" required ${canCreate ? '' : 'disabled'}>
+                    <option value="">-- Chọn proxy --</option>
+                    ${proxyOpts}
+                  </select>
+                </div>
+                <div>
+                  <button type="submit" class="btn btn-sm btn-primary" ${canCreate ? '' : 'disabled'}>
+                    <i class="bi bi-plus-lg"></i> Add
+                  </button>
+                </div>
+              </form>
+            </div>`;
+
+            if (!mappings.length) return form + `<p class="text-muted small mb-0 ps-2 pt-1"><i class="bi bi-info-circle me-1"></i>Chưa có mapping nào.</p>`;
             return `<table class="table table-sm node-detail-table mb-0">
                 <thead><tr><th>Client IP/CIDR</th><th>Proxy</th><th>State</th><th>Local Port</th></tr></thead>
                 <tbody>
@@ -249,9 +278,10 @@
                     <td><small class="text-muted">${m.proxy ? m.proxy.host + ':' + m.proxy.port : '—'}</small></td>
                     <td>${mappingStateBadge(m.state)}</td>
                     <td>${m.local_redirect_port || '—'}</td>
+                    <td><button class="btn btn-xs btn-outline-danger" onclick="NodeManager.deleteMapping('${m.id}','${nodeId}')" title="Delete"><i class="bi bi-trash3"></i></button></td>
                 </tr>`).join('')}
                 </tbody>
-            </table>`;
+            </table>` + form;
         }
 
         async function refresh() {
@@ -317,7 +347,7 @@
                                 </span>
                             </div>
                             <div class="px-2 pb-2">
-                                ${renderMappingsTable(nodeMappings)}
+                                ${renderMappingsTable(nodeMappings, n.id, nodeProxies)}
                             </div>
                         </div>
                     </div>
@@ -406,6 +436,40 @@
             return false;
         }
 
+        async function createMapping(nodeId, form) {
+            const clientIp = form.client_ip.value.trim();
+            const proxyId = form.proxy_id.value;
+            if (!clientIp || !proxyId) return;
+            try {
+                // Find or create client
+                const clients = await (await fetch(api('/v1/clients'), { headers: hdr() })).json();
+                let clientId = (clients || []).find(c => c.ip_cidr === clientIp + '/32' || c.ip_cidr === clientIp)?.id;
+                if (!clientId) {
+                    const cr = await fetch(api('/v1/clients'), {
+                        method: 'POST', headers: hdr(),
+                        body: JSON.stringify({ ip_cidr: clientIp, enabled: true })
+                    });
+                    if (!cr.ok) { alert('Failed to create client'); return; }
+                    clientId = (await cr.json()).id;
+                }
+                // Create mapping
+                const mr = await fetch(api('/v1/mappings'), {
+                    method: 'POST', headers: hdr(),
+                    body: JSON.stringify({ client_id: clientId, proxy_id: proxyId })
+                });
+                if (!mr.ok) { const e = await mr.json().catch(() => ({})); alert('Error: ' + (e.error || mr.status)); return; }
+                form.reset();
+                refresh();
+            } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function deleteMapping(mappingId, nodeId) {
+            if (!confirm('Delete this mapping?')) return;
+            const res = await fetch(api(`/v1/mappings/${mappingId}`), { method: 'DELETE', headers: hdr() });
+            if (res.ok) refresh();
+            else alert('Delete failed');
+        }
+
         async function deleteNode(id, name) {
             if (!confirm(`Delete node "${name}"?`)) return;
             const res = await fetch(api(`/v1/nodes/${id}`), { method: 'DELETE', headers: hdr() });
@@ -417,7 +481,7 @@
         refresh();
         setInterval(refresh, 15000);
 
-        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode };
+        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping };
     })();
 </script>
 {{end}}
