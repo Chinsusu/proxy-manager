@@ -226,14 +226,14 @@
         function renderProxiesTable(proxies) {
             if (!proxies.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có proxy nào được gán vào node này.</p>`;
             return `<table class="table table-sm node-detail-table mb-0">
-                <thead><tr><th>Address</th><th>Type</th><th>Status</th><th>Latency</th><th>Exit IP</th></tr></thead>
+                <thead><tr><th>Address</th><th>Status</th><th>Latency</th><th>Exit IP</th><th>Actions</th></tr></thead>
                 <tbody>
                 ${proxies.map(p => `<tr>
                     <td><code>${p.host}:${p.port}</code></td>
-                    <td><span class="badge bg-label-secondary" style="font-size:.7rem">${p.type}</span></td>
                     <td>${proxyStatusBadge(p.status)}</td>
                     <td>${p.latency_ms != null ? p.latency_ms + 'ms' : '—'}</td>
                     <td><small class="text-muted">${p.exit_ip || '—'}</small></td>
+                    <td><button class="btn btn-xs btn-outline-secondary" onclick="NodeManager.unassignProxy('${p.id}')" title="Unassign"><i class="bi bi-x-circle"></i></button></td>
                 </tr>`).join('')}
                 </tbody>
             </table>`;
@@ -472,6 +472,16 @@
             else alert('Delete failed');
         }
 
+        async function unassignProxy(proxyId) {
+            if (!confirm('Unassign proxy khỏi node này?')) return;
+            const res = await fetch(api(`/v1/proxies/${proxyId}/node`), {
+                method: 'PUT', headers: hdr(),
+                body: JSON.stringify({ node_id: '' })
+            });
+            if (res.ok) refresh();
+            else alert('Unassign failed');
+        }
+
         async function deleteNode(id, name) {
             if (!confirm(`Delete node "${name}"?`)) return;
             const res = await fetch(api(`/v1/nodes/${id}`), { method: 'DELETE', headers: hdr() });
@@ -483,7 +493,7 @@
         refresh();
         setInterval(refresh, 15000);
 
-        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping };
+        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping, unassignProxy };
     })();
 </script>
 {{end}}
