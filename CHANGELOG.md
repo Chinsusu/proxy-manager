@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.7.1] - 2026-02-21
+
+### Fixed
+- **SSH deploy**: binary transfer now works without GitHub releases — master server builds `pgw-node` from local source (`/opt/pgw-node`) and transfers via SSH stdin pipe
+- **SSH deploy (go build)**: fixed `go: executable file not found in $PATH` when pgw-api runs as systemd service — added fallback to `/usr/local/go/bin/go` and set `HOME=/root`, `GOCACHE=/tmp/pgw-go-cache`
+- **SSH deploy (go build)**: added `-buildvcs=false` to avoid `error obtaining VCS status: exit status 128` when git repo is in an unusual state
+- **Deploy log streaming**: rewritten `run()` to stream SSH output line-by-line via `io.Pipe` instead of buffering — deploy log modal now updates in real time
+- **Deploy status race condition**: added `sync.WaitGroup` to ensure log-accumulator goroutine finishes before final status (`deployed`/`failed`) is written — badge no longer reverts to `deploying` after completion
+- **Deploy log preserved on success**: `UpdateNodeDeploy("deployed")` now only updates `deploy_status` + `deployed_at`, no longer overwrites accumulated log with empty string
+- **apt needrestart hang**: added `NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1` env vars to step 1 to suppress interactive prompts
+
 ## [1.7.0] - 2026-02-21
 
 ### Added

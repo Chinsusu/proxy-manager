@@ -2,6 +2,7 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
@@ -11,6 +12,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -21,6 +24,11 @@ import (
 
 // MasterURL is the URL of this PGW master server, set at startup.
 var MasterURL string
+
+// NodeBinSourceDir is the directory containing the pgw-node Go module source.
+// When set, the master will build pgw-node locally and transfer the binary via SSH
+// instead of downloading from GitHub releases.
+var NodeBinSourceDir string
 
 // Encrypt encrypts plaintext using AES-256-GCM, key derived from secret.
 // Returns hex-encoded ciphertext.
@@ -76,9 +84,61 @@ func deriveKey(secret string) []byte {
 	return h[:]
 }
 
+// buildLocalNodeBin cross-compiles pgw-node for linux/amd64 from NodeBinSourceDir.
+// Returns path to the temp binary or error.
+func buildLocalNodeBin() (string, error) {
+	// Locate go binary — systemd services may not have it in PATH.
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		for _, p := range []string{"/usr/local/go/bin/go", "/usr/bin/go", "/usr/local/bin/go"} {
+			if _, e := os.Stat(p); e == nil {
+				goBin = p
+				break
+			}
+		}
+	}
+	if goBin == "" {
+		return "", fmt.Errorf("go binary not found; install Go on the master server")
+	}
+
+	tmp, err := os.CreateTemp("", "pgw-node-*")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	cmd := exec.Command(goBin, "build", "-buildvcs=false", "-o", tmp.Name(), "./cmd/pgw-node")
+	cmd.Dir = NodeBinSourceDir
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0",
+		"PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin",
+		"HOME=/root",
+		"GOCACHE=/tmp/pgw-go-cache",
+		"GOPATH=/tmp/pgw-go-path")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", fmt.Errorf("build pgw-node: %w\n%s", err, out)
+	}
+	return tmp.Name(), nil
+}
+
+// transferBinary sends a local file to remotePath on the SSH client via stdin pipe.
+func transferBinary(client *gossh.Client, localPath, remotePath string) error {
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return fmt.Errorf("read local binary: %w", err)
+	}
+	sess, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	defer sess.Close()
+	sess.Stdin = bytes.NewReader(data)
+	return sess.Run(fmt.Sprintf("cat > %s && chmod +x %s", remotePath, remotePath))
+}
+
 // DeployNode SSHes into node and runs the install script.
 // logChan receives log lines (closed when done). ctx controls cancellation.
-func DeployNode(ctx context.Context, node types.Node, secret string, logChan chan<- string) error {
+// Returns the node's Ed25519 public key (hex) extracted after init, or empty if unavailable.
+func DeployNode(ctx context.Context, node types.Node, secret string, logChan chan<- string) (string, error) {
 	defer close(logChan)
 
 	log := func(msg string) {
@@ -97,7 +157,7 @@ func DeployNode(ctx context.Context, node types.Node, secret string, logChan cha
 	if key != "" {
 		signer, err := gossh.ParsePrivateKey([]byte(key))
 		if err != nil {
-			return fmt.Errorf("parse ssh key: %w", err)
+			return "", fmt.Errorf("parse ssh key: %w", err)
 		}
 		auths = append(auths, gossh.PublicKeys(signer))
 	}
@@ -105,7 +165,7 @@ func DeployNode(ctx context.Context, node types.Node, secret string, logChan cha
 		auths = append(auths, gossh.Password(pass))
 	}
 	if len(auths) == 0 {
-		return fmt.Errorf("no SSH credentials configured")
+		return "", fmt.Errorf("no SSH credentials configured")
 	}
 
 	host := node.SSHHost
@@ -127,13 +187,13 @@ func DeployNode(ctx context.Context, node types.Node, secret string, logChan cha
 	dialer := &net.Dialer{Timeout: 30 * time.Second}
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return fmt.Errorf("dial %s: %w", addr, err)
+		return "", fmt.Errorf("dial %s: %w", addr, err)
 	}
 
 	sshConn, chans, reqs, err := gossh.NewClientConn(conn, addr, cfg)
 	if err != nil {
 		_ = conn.Close()
-		return fmt.Errorf("ssh handshake: %w", err)
+		return "", fmt.Errorf("ssh handshake: %w", err)
 	}
 	client := gossh.NewClient(sshConn, chans, reqs)
 	defer client.Close()
@@ -146,48 +206,88 @@ func DeployNode(ctx context.Context, node types.Node, secret string, logChan cha
 		}
 		defer sess.Close()
 
-		out := &strings.Builder{}
-		sess.Stdout = out
-		sess.Stderr = out
+		// Stream stdout+stderr real-time, line by line.
+		pr, pw := io.Pipe()
+		sess.Stdout = pw
+		sess.Stderr = pw
 
 		log(fmt.Sprintf("[deploy] $ %s", cmd))
-		if err := sess.Run(cmd); err != nil {
-			log(fmt.Sprintf("[deploy] ERROR: %v\n%s", err, out.String()))
-			return fmt.Errorf("run %q: %w", cmd, err)
+
+		var runErr error
+		go func() {
+			runErr = sess.Run(cmd)
+			pw.Close()
+		}()
+
+		buf := make([]byte, 0, 256)
+		tmp := make([]byte, 512)
+		for {
+			n, err := pr.Read(tmp)
+			if n > 0 {
+				buf = append(buf, tmp[:n]...)
+				for {
+					i := bytes.IndexByte(buf, '\n')
+					if i < 0 { break }
+					log(string(buf[:i]))
+					buf = buf[i+1:]
+				}
+			}
+			if err != nil { break } // io.EOF or pipe closed
 		}
-		if s := strings.TrimSpace(out.String()); s != "" {
-			log(s)
+		if len(buf) > 0 {
+			log(string(buf))
+		}
+		if runErr != nil {
+			log(fmt.Sprintf("[deploy] ERROR: %v", runErr))
+			return fmt.Errorf("run %q: %w", cmd, runErr)
 		}
 		return nil
 	}
 
 	// Step 1: Install dependencies
 	log("[deploy] Step 1/5: apt update + install curl systemd ...")
-	if err := run("DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq curl systemd"); err != nil {
-		return err
+	apt1 := "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 " +
+		"apt-get update -qq && apt-get install -y -qq curl systemd"
+	if err := run(apt1); err != nil {
+		return "", err
 	}
 
-	// Step 2: Download and install pgw binaries from GitHub releases
-	log("[deploy] Step 2/5: Install pgw-node binaries ...")
-	installScript := fmt.Sprintf(`
+	// Step 2: Install pgw-node binary (local build transfer or GitHub release)
+	log("[deploy] Step 2/5: Install pgw-node binary ...")
+	if NodeBinSourceDir != "" {
+		// Build locally and transfer via SSH — no GitHub release required.
+		log("[deploy] Building pgw-node from source ...")
+		binPath, err := buildLocalNodeBin()
+		if err != nil {
+			log(fmt.Sprintf("[deploy] WARN: local build failed: %v", err))
+			log("[deploy] Falling back to GitHub release download ...")
+			if err2 := run(`
 set -e
-REPO="Chinsusu/pgw-node"
-BIN_URL="https://github.com/$REPO/releases/latest/download"
-mkdir -p /usr/local/bin /etc/pgw /etc/pgw-node /var/lib/pgw
-
-# Install pgw-node
-curl -fsSL "$BIN_URL/pgw-node-linux-amd64" -o /usr/local/bin/pgw-node && chmod +x /usr/local/bin/pgw-node
-
-# Install proxy-server-local binaries (api, agent, fwd, health)
-MASTER_REPO="Chinsusu/proxy-server-local"
-MASTER_URL="https://github.com/$MASTER_REPO/releases/latest/download"
-for bin in pgw-api pgw-agent pgw-fwd pgw-health; do
-  curl -fsSL "$MASTER_URL/$bin-linux-amd64" -o /usr/local/bin/$bin && chmod +x /usr/local/bin/$bin
-done
-echo "Binaries installed"
-`)
-	if err := run(strings.TrimSpace(installScript)); err != nil {
-		return err
+mkdir -p /usr/local/bin
+curl -fsSL "https://github.com/Chinsusu/pgw-node/releases/latest/download/pgw-node-linux-amd64" -o /usr/local/bin/pgw-node && chmod +x /usr/local/bin/pgw-node
+echo "pgw-node installed from GitHub"
+`); err2 != nil {
+				return "", err2
+			}
+		} else {
+			defer os.Remove(binPath)
+			log("[deploy] Transferring pgw-node binary via SSH ...")
+			if err := transferBinary(client, binPath, "/usr/local/bin/pgw-node"); err != nil {
+				return "", fmt.Errorf("transfer pgw-node binary: %w", err)
+			}
+			log("[deploy] pgw-node binary transferred ✓")
+		}
+	} else {
+		// Download from GitHub releases.
+		installScript := `
+set -e
+mkdir -p /usr/local/bin
+curl -fsSL "https://github.com/Chinsusu/pgw-node/releases/latest/download/pgw-node-linux-amd64" -o /usr/local/bin/pgw-node && chmod +x /usr/local/bin/pgw-node
+echo "pgw-node installed from GitHub"
+`
+		if err := run(strings.TrimSpace(installScript)); err != nil {
+			return "", err
+		}
 	}
 
 	// Step 3: Write environment files
@@ -224,7 +324,7 @@ chmod 600 /etc/pgw/pgw.env /etc/pgw-node/pgw-node.env`,
 		pgwEnv, pgwNodeEnv,
 	)
 	if err := run(writeCmd); err != nil {
-		return err
+		return "", err
 	}
 
 	// Step 4: Install systemd units
@@ -252,7 +352,7 @@ sed -i 's|EnvironmentFile=/etc/pgw/pgw.env|EnvironmentFile=/etc/pgw-node/pgw-nod
 systemctl daemon-reload
 `
 	if err := run(strings.TrimSpace(unitInstall)); err != nil {
-		return err
+		return "", err
 	}
 
 	// Step 5: Initialize pgw-node keypair and start services
@@ -271,7 +371,7 @@ echo "PUBKEY:$PUBKEY"
 `
 	sess, err := client.NewSession()
 	if err != nil {
-		return fmt.Errorf("session for step 5: %w", err)
+		return "", fmt.Errorf("session for step 5: %w", err)
 	}
 	out := &strings.Builder{}
 	sess.Stdout = out
@@ -283,17 +383,18 @@ echo "PUBKEY:$PUBKEY"
 	result := out.String()
 	log(result)
 
-	// Try to extract public key from output and update node record
+	// Extract Ed25519 public key from output (line: "PUBKEY:<hex>")
+	var pubkey string
 	for _, line := range strings.Split(result, "\n") {
 		if strings.HasPrefix(line, "PUBKEY:") {
-			pubkey := strings.TrimPrefix(line, "PUBKEY:")
-			pubkey = strings.TrimSpace(pubkey)
+			pubkey = strings.TrimSpace(strings.TrimPrefix(line, "PUBKEY:"))
 			if pubkey != "" {
-				log(fmt.Sprintf("[deploy] Node public key: %s", pubkey))
+				log(fmt.Sprintf("[deploy] ✓ Node public key captured: %s", pubkey))
 			}
+			break
 		}
 	}
 
 	log("[deploy] Deploy completed successfully ✓")
-	return nil
+	return pubkey, nil
 }

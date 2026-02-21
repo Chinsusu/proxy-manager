@@ -902,30 +902,41 @@ func main() {
 			}
 			_ = st.UpdateNodeDeploy(nodeID, "deploying", "Deploy started...")
 			_ = st.UpdateNodeStatus(nodeID, "deploying", "", time.Now())
-			logChan := make(chan string, 200)
+			innerChan := make(chan string, 500)
+			var logWg sync.WaitGroup
+			logWg.Add(1)
 			go func() {
+				defer logWg.Done()
 				var buf strings.Builder
-				for line := range logChan {
+				for line := range innerChan {
 					buf.WriteString(line + "\n")
 					_ = st.UpdateNodeDeploy(nodeID, "deploying", buf.String())
 				}
 			}()
 			go func() {
-				innerChan := make(chan string, 200)
-				go func() {
-					for line := range innerChan { logChan <- line }
-					close(logChan)
-				}()
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
-				masterURL := strings.TrimSpace(os.Getenv("PGW_MASTER_URL"))
+			masterURL := strings.TrimSpace(os.Getenv("PGW_MASTER_URL"))
 				if masterURL == "" { masterURL = "http://127.0.0.1:8080" }
 				deploy.MasterURL = masterURL
-				if err := deploy.DeployNode(ctx, node, cfg.JWTSecret, innerChan); err != nil {
-					_ = st.UpdateNodeDeploy(nodeID, "failed", err.Error())
+				nodeSrc := strings.TrimSpace(os.Getenv("PGW_NODE_SRC_DIR"))
+				if nodeSrc == "" { nodeSrc = "/opt/pgw-node" }
+				deploy.NodeBinSourceDir = nodeSrc
+				pubkey, deployErr := deploy.DeployNode(ctx, node, cfg.JWTSecret, innerChan)
+				// Wait for log goroutine to flush all lines before setting final status.
+				logWg.Wait()
+				if deployErr != nil {
+					_ = st.UpdateNodeDeploy(nodeID, "failed", deployErr.Error())
 					_ = st.UpdateNodeStatus(nodeID, "error", "", time.Now())
 				} else {
+					_ = st.UpdateNodeDeploy(nodeID, "deployed", "")
 					_ = st.UpdateNodeStatus(nodeID, "offline", "", time.Now())
+					if pubkey != "" {
+						if n, ok := st.GetNode(nodeID); ok {
+							n.PublicKey = pubkey
+							_, _ = st.UpdateNode(n)
+						}
+					}
 				}
 			}()
 			httpx.JSON(w, 202, map[string]string{"status": "deploying"})

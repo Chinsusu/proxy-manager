@@ -635,10 +635,19 @@ func (s *sqliteStore) UpdateNodeStatus(id, status, version string, lastSeen time
 
 func (s *sqliteStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool {
 	var err error
-	if deployStatus == "deployed" {
+	switch deployStatus {
+	case "deployed":
+		// Only update status + timestamp; preserve accumulated log.
 		now := time.Now().UTC().Format(time.RFC3339Nano)
-		_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deploy_log=?, deployed_at=? WHERE id=?`, deployStatus, deployLog, now, id)
-	} else {
+		_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deployed_at=? WHERE id=?`, deployStatus, now, id)
+	case "failed":
+		if deployLog != "" {
+			// Append error to existing log instead of overwriting.
+			_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deploy_log=deploy_log||? WHERE id=?`, deployStatus, "\n"+deployLog, id)
+		} else {
+			_, err = s.db.Exec(`UPDATE nodes SET deploy_status=? WHERE id=?`, deployStatus, id)
+		}
+	default:
 		_, err = s.db.Exec(`UPDATE nodes SET deploy_status=?, deploy_log=? WHERE id=?`, deployStatus, deployLog, id)
 	}
 	return err == nil
