@@ -243,26 +243,28 @@ func (s *fileStore) UpdateMappingNode(id, nodeID string) bool {
 
 // ---------- Telemetry ----------
 
-func (s *fileStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {
+func (s *fileStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string) {
 	s.mu.Lock(); defer s.mu.Unlock()
-	s.applyTelemetry(id, status, latency, exitIP)
+	s.applyTelemetry(id, status, latency, exitIP, region, isp)
 	_ = s.save()
 }
 
 func (s *fileStore) SetProxyTelemetryBatch(updates []TelemetryUpdate) {
 	s.mu.Lock(); defer s.mu.Unlock()
 	for _, u := range updates {
-		s.applyTelemetry(u.ID, u.Status, u.Latency, u.ExitIP)
+		s.applyTelemetry(u.ID, u.Status, u.Latency, u.ExitIP, u.Region, u.ISP)
 	}
 	_ = s.save()
 }
 
-func (s *fileStore) applyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {
+func (s *fileStore) applyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string) {
 	p, ok := s.state.Proxies[id]; if !ok { return }
 	now := time.Now()
 	p.Status = status
 	if latency > 0 { p.LatencyMs = &latency } else { p.LatencyMs = nil }
 	if exitIP != "" { p.ExitIP = &exitIP } else { p.ExitIP = nil }
+	if region != "" { p.Region = &region } else { p.Region = nil }
+	if isp != "" { p.ISP = &isp } else { p.ISP = nil }
 	p.LastCheckedAt = &now
 	s.state.Proxies[id] = p
 }

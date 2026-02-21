@@ -32,7 +32,7 @@ type Store interface {
 	UpdateMappingNode(id, nodeID string) bool
 
 	// Telemetry
-	SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string)
+	SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string)
 	SetProxyTelemetryBatch(updates []TelemetryUpdate)
 
 	// Emails
@@ -70,6 +70,8 @@ type TelemetryUpdate struct {
 	Status  types.ProxyStatus
 	Latency int
 	ExitIP  string
+	Region  string
+	ISP     string
 }
 
 type memoryStore struct {
@@ -281,24 +283,26 @@ func (s *memoryStore) UpdateMappingNode(id, nodeID string) bool {
 
 // ---------- Telemetry ----------
 
-func (s *memoryStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {
+func (s *memoryStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string) {
 	s.mu.Lock(); defer s.mu.Unlock()
-	s.applyTelemetry(id, status, latency, exitIP)
+	s.applyTelemetry(id, status, latency, exitIP, region, isp)
 }
 
 func (s *memoryStore) SetProxyTelemetryBatch(updates []TelemetryUpdate) {
 	s.mu.Lock(); defer s.mu.Unlock()
 	for _, u := range updates {
-		s.applyTelemetry(u.ID, u.Status, u.Latency, u.ExitIP)
+		s.applyTelemetry(u.ID, u.Status, u.Latency, u.ExitIP, u.Region, u.ISP)
 	}
 }
 
-func (s *memoryStore) applyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {
+func (s *memoryStore) applyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string) {
 	p, ok := s.proxies[id]; if !ok { return }
 	now := time.Now()
 	p.Status = status
 	if latency > 0 { p.LatencyMs = &latency } else { p.LatencyMs = nil }
 	if exitIP != "" { p.ExitIP = &exitIP } else { p.ExitIP = nil }
+	if region != "" { p.Region = &region } else { p.Region = nil }
+	if isp != "" { p.ISP = &isp } else { p.ISP = nil }
 	p.LastCheckedAt = &now
 	s.proxies[id] = p
 }

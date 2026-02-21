@@ -226,13 +226,14 @@
         function renderProxiesTable(proxies) {
             if (!proxies.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có proxy nào được gán vào node này.</p>`;
             return `<table class="table table-sm node-detail-table mb-0">
-                <thead><tr><th>Address</th><th>Status</th><th>Latency</th><th>Exit IP</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Address</th><th>Status</th><th>Latency</th><th>Region</th><th>ISP</th><th>Actions</th></tr></thead>
                 <tbody>
                 ${proxies.map(p => `<tr>
                     <td><code>${p.host}:${p.port}</code></td>
                     <td>${proxyStatusBadge(p.status)}</td>
                     <td>${p.latency_ms != null ? p.latency_ms + 'ms' : '—'}</td>
-                    <td><small class="text-muted">${p.exit_ip || '—'}</small></td>
+                    <td><small class="text-muted">${p.region || '—'}</small></td>
+                    <td><small class="text-muted">${p.isp || '—'}</small></td>
                     <td><button class="btn btn-xs btn-outline-secondary" onclick="NodeManager.unassignProxy('${p.id}')" title="Unassign"><i class="bi bi-x-circle"></i></button></td>
                 </tr>`).join('')}
                 </tbody>

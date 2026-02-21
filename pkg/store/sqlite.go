@@ -138,6 +138,8 @@ func (s *sqliteStore) migrate() error {
 	for _, alter := range []string{
 		`ALTER TABLE proxies ADD COLUMN node_id TEXT`,
 		`ALTER TABLE mappings ADD COLUMN node_id TEXT`,
+		`ALTER TABLE proxies ADD COLUMN region TEXT`,
+		`ALTER TABLE proxies ADD COLUMN isp TEXT`,
 	} {
 		_, _ = s.db.Exec(alter) // intentionally ignore error (column may already exist)
 	}
@@ -176,15 +178,15 @@ func fmtTime(t *time.Time) string {
 // ---------- Proxies ----------
 
 func (s *sqliteStore) ListProxies() []types.Proxy {
-	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at,node_id FROM proxies ORDER BY host,port,id`)
+	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at,node_id,region,isp FROM proxies ORDER BY host,port,id`)
 	if err != nil { return nil }
 	defer rows.Close()
 	var out []types.Proxy
 	for rows.Next() {
 		var p types.Proxy
-		var label, username, password, exitIP, lastChecked, nodeID sql.NullString
+		var label, username, password, exitIP, lastChecked, nodeID, region, isp sql.NullString
 		var latencyMs sql.NullInt64
-		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked, &nodeID)
+		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked, &nodeID, &region, &isp)
 		if label.Valid && label.String != "" { p.Label = label.String }
 		if username.Valid && username.String != "" { p.Username = &username.String }
 		if password.Valid && password.String != "" { p.Password = &password.String }
@@ -192,6 +194,8 @@ func (s *sqliteStore) ListProxies() []types.Proxy {
 		if exitIP.Valid && exitIP.String != "" { p.ExitIP = &exitIP.String }
 		if lastChecked.Valid { p.LastCheckedAt = parseTime(lastChecked.String) }
 		if nodeID.Valid && nodeID.String != "" { p.NodeID = &nodeID.String }
+		if region.Valid && region.String != "" { p.Region = &region.String }
+		if isp.Valid && isp.String != "" { p.ISP = &isp.String }
 		out = append(out, p)
 	}
 	return out
@@ -387,8 +391,8 @@ func (s *sqliteStore) UpdateMappingState(id string, state string, localPort int)
 
 // ---------- Telemetry ----------
 
-func (s *sqliteStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP string) {
-	s.SetProxyTelemetryBatch([]TelemetryUpdate{{ID: id, Status: status, Latency: latency, ExitIP: exitIP}})
+func (s *sqliteStore) SetProxyTelemetry(id string, status types.ProxyStatus, latency int, exitIP, region, isp string) {
+	s.SetProxyTelemetryBatch([]TelemetryUpdate{{ID: id, Status: status, Latency: latency, ExitIP: exitIP, Region: region, ISP: isp}})
 }
 
 // SetProxyTelemetryBatch uses a single transaction for all updates — critical for 20K proxies.
@@ -400,13 +404,13 @@ func (s *sqliteStore) SetProxyTelemetryBatch(updates []TelemetryUpdate) {
 		if err != nil { _ = tx.Rollback() }
 	}()
 
-	stmt, err := tx.Prepare(`UPDATE proxies SET status=?, latency_ms=CASE WHEN ?>0 THEN ? ELSE NULL END, exit_ip=CASE WHEN ?!='' THEN ? ELSE NULL END, last_checked_at=? WHERE id=?`)
+	stmt, err := tx.Prepare(`UPDATE proxies SET status=?, latency_ms=CASE WHEN ?>0 THEN ? ELSE NULL END, exit_ip=CASE WHEN ?!='' THEN ? ELSE NULL END, region=CASE WHEN ?!='' THEN ? ELSE NULL END, isp=CASE WHEN ?!='' THEN ? ELSE NULL END, last_checked_at=? WHERE id=?`)
 	if err != nil { return }
 	defer stmt.Close()
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	for _, u := range updates {
-		if _, err = stmt.Exec(string(u.Status), u.Latency, u.Latency, u.ExitIP, u.ExitIP, now, u.ID); err != nil {
+		if _, err = stmt.Exec(string(u.Status), u.Latency, u.Latency, u.ExitIP, u.ExitIP, u.Region, u.Region, u.ISP, u.ISP, now, u.ID); err != nil {
 			return
 		}
 	}

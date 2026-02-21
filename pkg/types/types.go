@@ -24,6 +24,8 @@ type Proxy struct {
 	Status        ProxyStatus `json:"status"`
 	LatencyMs     *int        `json:"latency_ms,omitempty"`
 	ExitIP        *string     `json:"exit_ip,omitempty"`
+	Region        *string     `json:"region,omitempty"`
+	ISP           *string     `json:"isp,omitempty"`
 	LastCheckedAt *time.Time  `json:"last_checked_at,omitempty"`
 	NodeID        *string     `json:"node_id,omitempty"`
 }
@@ -144,6 +146,7 @@ type NodeHeartbeat struct {
 
 type MappingStatusReport struct {
 	MappingID   string `json:"mapping_id"`
+	ProxyID     string `json:"proxy_id"`
 	State       string `json:"state"`
 	ProxyStatus string `json:"proxy_status"`
 	LatencyMs   int    `json:"latency_ms"`

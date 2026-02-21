@@ -236,11 +236,11 @@ func main() {
 			}
 			cancel()
 			if res.Err != nil {
-				st.SetProxyTelemetry(target.ID, types.StatusDown, 0, "")
+				st.SetProxyTelemetry(target.ID, types.StatusDown, 0, "", "", "")
 				httpx.JSON(w, 200, res)
 				return
 			}
-			st.SetProxyTelemetry(target.ID, res.Status, res.LatencyMs, res.ExitIP)
+			st.SetProxyTelemetry(target.ID, res.Status, res.LatencyMs, res.ExitIP, res.Region, res.ISP)
 			httpx.JSON(w, 200, res)
 			return
 		}
@@ -453,14 +453,14 @@ func main() {
 			}
 			cancel()
 			if res.Err != nil {
-				st.SetProxyTelemetry(mv.Proxy.ID, types.StatusDown, 0, "")
+				st.SetProxyTelemetry(mv.Proxy.ID, types.StatusDown, 0, "", "", "")
 				_ = st.UpdateMappingState(mv.ID, "FAILED", mv.LocalRedirectPort)
 				mv.State = "FAILED"
 				logging.Info.Printf("[DEBUG] Sending JSON response for mapping %s", mv.ID)
 				httpx.JSON(w, 201, mv)
 				return
 			}
-			st.SetProxyTelemetry(mv.Proxy.ID, res.Status, res.LatencyMs, res.ExitIP)
+			st.SetProxyTelemetry(mv.Proxy.ID, res.Status, res.LatencyMs, res.ExitIP, res.Region, res.ISP)
 
 			// First-use: ensure flag + start forwarder (best-effort)
 			if mv.LocalRedirectPort > 0 {
@@ -921,7 +921,9 @@ func main() {
 			for _, ms := range hb.Mappings {
 				_ = st.UpdateMappingState(ms.MappingID, ms.State, 0)
 				if ms.LatencyMs > 0 || ms.ProxyStatus != "" {
-					st.SetProxyTelemetry(ms.MappingID, types.ProxyStatus(ms.ProxyStatus), ms.LatencyMs, ms.ExitIP)
+					proxyID := ms.ProxyID
+					if proxyID == "" { proxyID = ms.MappingID } // backward compat
+					st.SetProxyTelemetry(proxyID, types.ProxyStatus(ms.ProxyStatus), ms.LatencyMs, ms.ExitIP, "", "")
 				}
 			}
 			w.WriteHeader(204)
@@ -1077,6 +1079,8 @@ func runHealthTick(st store.Store) {
 		status  types.ProxyStatus
 		latency int
 		exitIP  string
+		region  string
+		isp     string
 	}
 	results := make(chan result, len(proxies))
 
@@ -1102,7 +1106,7 @@ func runHealthTick(st store.Store) {
 			if res.Err != nil {
 				results <- result{id: p.ID, status: types.StatusDown}
 			} else {
-				results <- result{id: p.ID, status: res.Status, latency: res.LatencyMs, exitIP: res.ExitIP}
+				results <- result{id: p.ID, status: res.Status, latency: res.LatencyMs, exitIP: res.ExitIP, region: res.Region, isp: res.ISP}
 			}
 		}(p)
 	}
@@ -1117,6 +1121,8 @@ func runHealthTick(st store.Store) {
 			Status:  r.status,
 			Latency: r.latency,
 			ExitIP:  r.exitIP,
+			Region:  r.region,
+			ISP:     r.isp,
 		})
 	}
 	if len(updates) > 0 {

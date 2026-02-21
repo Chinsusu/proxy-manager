@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -21,6 +22,8 @@ type Result struct {
 	Status    types.ProxyStatus `json:"status"`
 	LatencyMs int               `json:"latency_ms"`
 	ExitIP    string            `json:"exit_ip"`
+	Region    string            `json:"region"`
+	ISP       string            `json:"isp"`
 	Err       error             `json:"-"`
 }
 
@@ -83,13 +86,15 @@ func CheckHTTP(ctx context.Context, host string, port int, user, pass *string) R
 	elapsed := time.Since(start)
 	_ = conn.Close()
 	
-	// Fetch exit IP via separate connection through the proxy
-	exitIP := fetchExitIPViaHTTPProxy(ctx, host, port, user, pass)
+	// Fetch exit IP and geo info via separate connection through the proxy
+	exitIP, region, isp := fetchExitIPAndGeo(ctx, "http", host, port, user, pass)
 
 	return Result{
 		Status:    classifyLatency(elapsed),
 		LatencyMs: int(elapsed.Milliseconds()),
 		ExitIP:    exitIP,
+		Region:    region,
+		ISP:       isp,
 		Err:       nil,
 	}
 }
@@ -125,15 +130,60 @@ func CheckSOCKS5(ctx context.Context, host string, port int, user, pass *string)
 	elapsed := time.Since(start)
 	_ = conn.Close()
 	
-	// Fetch exit IP via separate connection through the SOCKS5 proxy
-	exitIP := fetchExitIPViaSOCKS5(ctx, host, port, user, pass)
+	// Fetch exit IP and geo info via separate connection through the SOCKS5 proxy
+	exitIP, region, isp := fetchExitIPAndGeo(ctx, "socks5", host, port, user, pass)
 
 	return Result{
 		Status:    classifyLatency(elapsed),
 		LatencyMs: int(elapsed.Milliseconds()),
 		ExitIP:    exitIP,
+		Region:    region,
+		ISP:       isp,
 		Err:       nil,
 	}
+}
+
+// fetchExitIPAndGeo fetches exit IP via proxy, then looks up region/ISP via ip-api.com.
+// proxyType is "http" or "socks5".
+func fetchExitIPAndGeo(ctx context.Context, proxyType, host string, port int, user, pass *string) (ip, region, isp string) {
+	if proxyType == "socks5" {
+		ip = fetchExitIPViaSOCKS5(ctx, host, port, user, pass)
+	} else {
+		ip = fetchExitIPViaHTTPProxy(ctx, host, port, user, pass)
+	}
+	if ip == "" {
+		return
+	}
+	// Geo lookup — plain HTTP, no auth needed
+	geoCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	geoReq, err := http.NewRequestWithContext(geoCtx, http.MethodGet,
+		"http://ip-api.com/json/"+ip+"?fields=country,regionName,isp", nil)
+	if err != nil {
+		return
+	}
+	geoReq.Header.Set("User-Agent", "pgw-geo/1.0")
+	geoResp, err := http.DefaultClient.Do(geoReq)
+	if err != nil {
+		return
+	}
+	defer geoResp.Body.Close()
+	var geo struct {
+		Country    string `json:"country"`
+		RegionName string `json:"regionName"`
+		ISP        string `json:"isp"`
+	}
+	if err := json.NewDecoder(geoResp.Body).Decode(&geo); err != nil {
+		return
+	}
+	if geo.Country != "" {
+		region = geo.Country
+		if geo.RegionName != "" {
+			region = geo.Country + " / " + geo.RegionName
+		}
+	}
+	isp = geo.ISP
+	return
 }
 
 // fetchExitIPViaHTTPProxy makes a separate HTTP request through the proxy to get the exit IP
