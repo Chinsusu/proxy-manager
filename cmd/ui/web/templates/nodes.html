@@ -38,37 +38,8 @@
     </div>
 </div>
 
-<!-- Node Table -->
-<div class="card">
-    <div class="card-header d-flex align-items-center justify-content-between">
-        <span class="card-title">Nodes</span>
-        <button class="btn btn-sm btn-outline-secondary" onclick="NodeManager.refresh()">
-            <i class="bi bi-arrow-clockwise"></i>
-        </button>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead>
-                    <tr>
-                        <th>NAME</th>
-                        <th>HOST</th>
-                        <th>STATUS</th>
-                        <th>DEPLOY</th>
-                        <th>VERSION</th>
-                        <th>LAST SEEN</th>
-                        <th>ACTIONS</th>
-                    </tr>
-                </thead>
-                <tbody id="nodeTableBody">
-                    <tr>
-                        <td colspan="7" class="text-center text-muted py-4">Loading...</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
+<!-- Node cards with inline proxy/mapping details -->
+<div id="nodeList"></div>
 
 <!-- Modal: Add Node -->
 <div class="modal fade" id="modalAddNode" tabindex="-1">
@@ -168,6 +139,42 @@
         display: inline-block;
         animation: spin 1s linear infinite;
     }
+
+    .node-card {
+        border-left: 3px solid #dee2e6;
+    }
+
+    .node-card.status-online {
+        border-left-color: #28a745;
+    }
+
+    .node-card.status-offline {
+        border-left-color: #6c757d;
+    }
+
+    .node-card.status-deploying {
+        border-left-color: #ffc107;
+    }
+
+    .node-card.status-error {
+        border-left-color: #dc3545;
+    }
+
+    .node-detail-table th {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        color: #6c757d;
+        font-weight: 600;
+    }
+
+    .node-detail-table td {
+        font-size: 0.82rem;
+        vertical-align: middle;
+    }
+
+    .proxy-status-badge {
+        font-size: 0.7rem;
+    }
 </style>
 
 <script>
@@ -206,35 +213,117 @@
             return Math.floor(d / 3600) + 'h ago';
         };
 
+        const proxyStatusBadge = s => {
+            const cls = { OK: 'success', DEGRADED: 'warning', DOWN: 'danger' }[s] || 'secondary';
+            return `<span class="badge bg-${cls} proxy-status-badge">${s || '?'}</span>`;
+        };
+
+        const mappingStateBadge = s => {
+            const cls = { APPLIED: 'success', PENDING: 'secondary', FAILED: 'danger' }[s] || 'secondary';
+            return `<span class="badge bg-label-${cls}" style="font-size:.7rem">${s || '?'}</span>`;
+        };
+
+        function renderProxiesTable(proxies) {
+            if (!proxies.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có proxy nào được gán vào node này.</p>`;
+            return `<table class="table table-sm node-detail-table mb-0">
+                <thead><tr><th>Address</th><th>Type</th><th>Status</th><th>Latency</th><th>Exit IP</th></tr></thead>
+                <tbody>
+                ${proxies.map(p => `<tr>
+                    <td><code>${p.host}:${p.port}</code></td>
+                    <td><span class="badge bg-label-secondary" style="font-size:.7rem">${p.type}</span></td>
+                    <td>${proxyStatusBadge(p.status)}</td>
+                    <td>${p.latency_ms != null ? p.latency_ms + 'ms' : '—'}</td>
+                    <td><small class="text-muted">${p.exit_ip || '—'}</small></td>
+                </tr>`).join('')}
+                </tbody>
+            </table>`;
+        }
+
+        function renderMappingsTable(mappings) {
+            if (!mappings.length) return `<p class="text-muted small mb-0 ps-1"><i class="bi bi-info-circle me-1"></i>Chưa có mapping nào.</p>`;
+            return `<table class="table table-sm node-detail-table mb-0">
+                <thead><tr><th>Client IP/CIDR</th><th>Proxy</th><th>State</th><th>Local Port</th></tr></thead>
+                <tbody>
+                ${mappings.map(m => `<tr>
+                    <td><code>${m.client?.ip_cidr || '—'}</code></td>
+                    <td><small class="text-muted">${m.proxy ? m.proxy.host + ':' + m.proxy.port : '—'}</small></td>
+                    <td>${mappingStateBadge(m.state)}</td>
+                    <td>${m.local_redirect_port || '—'}</td>
+                </tr>`).join('')}
+                </tbody>
+            </table>`;
+        }
+
         async function refresh() {
-            const res = await fetch(api('/v1/nodes'), { headers: hdr() });
-            const nodes = res.ok ? (await res.json() || []) : [];
+            const [nodesRes, proxiesRes, mappingsRes] = await Promise.all([
+                fetch(api('/v1/nodes'), { headers: hdr() }),
+                fetch(api('/v1/proxies'), { headers: hdr() }),
+                fetch(api('/v1/mappings'), { headers: hdr() }),
+            ]);
+
+            const nodes = nodesRes.ok ? (await nodesRes.json() || []) : [];
+            const proxies = proxiesRes.ok ? (await proxiesRes.json() || []) : [];
+            const mappings = mappingsRes.ok ? (await mappingsRes.json() || []) : [];
 
             document.getElementById('stat-online').textContent = nodes.filter(n => n.status === 'online').length;
             document.getElementById('stat-offline').textContent = nodes.filter(n => n.status === 'offline').length;
             document.getElementById('stat-deploying').textContent = nodes.filter(n => n.status === 'deploying').length;
 
-            const tbody = document.getElementById('nodeTableBody');
+            const container = document.getElementById('nodeList');
             if (!nodes.length) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No nodes found</td></tr>';
+                container.innerHTML = `<div class="card"><div class="card-body text-center text-muted py-5">
+                    <i class="bi bi-hdd-rack display-4 d-block mb-3 opacity-25"></i>No nodes found. Add one above.</div></div>`;
                 return;
             }
-            tbody.innerHTML = nodes.map(n => `
-            <tr>
-                <td><strong>${n.name}</strong></td>
-                <td><code>${n.ssh_host || '—'}:${n.ssh_port || 22}</code></td>
-                <td>${statusBadge(n.status)}</td>
-                <td>${deployBadge(n.deploy_status)}</td>
-                <td><small class="text-muted">${n.version || '—'}</small></td>
-                <td><small class="text-muted">${timeSince(n.last_seen_at)}</small></td>
-                <td>
-                    <div class="d-flex gap-1">
+
+            container.innerHTML = nodes.map(n => {
+                const nodeProxies = proxies.filter(p => p.node_id === n.id);
+                const nodeMappings = mappings.filter(m => m.proxy && nodeProxies.some(p => p.id === m.proxy.id));
+
+                return `<div class="card mb-3 node-card status-${n.status}">
+                <div class="card-header d-flex align-items-center justify-content-between py-2">
+                    <div class="d-flex align-items-center gap-3">
+                        <strong>${n.name}</strong>
+                        <code class="text-muted" style="font-size:.8rem">${n.ssh_host || '—'}:${n.ssh_port || 22}</code>
+                        ${statusBadge(n.status)}
+                        ${deployBadge(n.deploy_status)}
+                        <small class="text-muted">${n.version ? 'v' + n.version : ''}</small>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <small class="text-muted">${timeSince(n.last_seen_at)}</small>
                         <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')"><i class="bi bi-cloud-upload"></i></button>
                         <button class="btn btn-xs btn-outline-info"    title="Log"    onclick="NodeManager.showDeployLog('${n.id}','${n.name}')"><i class="bi bi-journal-text"></i></button>
                         <button class="btn btn-xs btn-outline-danger"  title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')"><i class="bi bi-trash"></i></button>
                     </div>
-                </td>
-            </tr>`).join('');
+                </div>
+                <div class="card-body p-0">
+                    <div class="row g-0">
+                        <!-- Proxies panel -->
+                        <div class="col-md-6 border-end">
+                            <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
+                                <span class="small fw-semibold text-muted"><i class="bi bi-diagram-3 me-1"></i>Proxies
+                                    <span class="badge bg-label-primary ms-1">${nodeProxies.length}</span>
+                                </span>
+                            </div>
+                            <div class="px-2 pb-2">
+                                ${renderProxiesTable(nodeProxies)}
+                            </div>
+                        </div>
+                        <!-- Mappings panel -->
+                        <div class="col-md-6">
+                            <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
+                                <span class="small fw-semibold text-muted"><i class="bi bi-arrow-left-right me-1"></i>Mappings
+                                    <span class="badge bg-label-primary ms-1">${nodeMappings.length}</span>
+                                </span>
+                            </div>
+                            <div class="px-2 pb-2">
+                                ${renderMappingsTable(nodeMappings)}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            }).join('');
         }
 
         async function addNode() {
