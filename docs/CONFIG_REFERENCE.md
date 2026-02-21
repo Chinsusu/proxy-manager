@@ -7,8 +7,8 @@
 | `PGW_API_ADDR` | `:8080` | Listen address |
 | `PGW_JWT_SECRET` | *(bắt buộc)* | Khoá ký JWT; tối thiểu 32 ký tự |
 | `PGW_JWT_STRICT` | `true` | `false` để bỏ qua validation JWT secret (chỉ dành cho dev) |
-| `PGW_STORE` | `memory` | `memory` hoặc `file` |
-| `PGW_STORE_PATH` | `/var/lib/pgw/state.json` | Path khi dùng `file` store |
+| `PGW_STORE` | `memory` | `memory`, `file`, hoặc `sqlite` |
+| `PGW_STORE_PATH` | `/var/lib/pgw/state.db` | Path khi dùng `file`/`sqlite` (`.json` cho file, `.db` cho sqlite) |
 | `PGW_HEALTH_INTERVAL` | `30s` | Chu kỳ health check |
 | `PGW_ADMIN_USER` | — | Username admin |
 | `PGW_ADMIN_PASS_HASH` | — | Argon2id PHC hash của password admin (khuyến nghị) |

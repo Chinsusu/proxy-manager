@@ -59,3 +59,24 @@ Base: `http://127.0.0.1:8080`
 - `GET /agent/health` — liveness check, trả `"ok"`
 
 > Ghi chú: UI reverse proxy `/agent/*` → `http://127.0.0.1:9090/agent` nên có thể gọi qua `http://127.0.0.1:8081/agent/reconcile`.
+
+## Emails
+- `GET /v1/emails` → `[]Email`
+- `POST /v1/emails` body: `{"address":"foo@gmail.com","provider":"gmail","password":"...","recovery_email":"...","paypal_id":"<optional>","note":"...","status":"active"}`
+  - → `201 Email`
+- `PUT /v1/emails/{id}` → `200 Email`
+- `DELETE /v1/emails/{id}` → `204 No Content`
+
+## PayPals
+- `GET /v1/paypals` → `[]PayPal`
+- `POST /v1/paypals` body: `{"email":"pp@example.com","owner_name":"...","verified":false,"balance":0,"currency":"USD","status":"active","note":"..."}`
+  - → `201 PayPal`
+- `PUT /v1/paypals/{id}` → `200 PayPal`
+- `DELETE /v1/paypals/{id}` → `204 No Content` (cascade: xóa income liên quan, unlink emails)
+
+## Income
+- `GET /v1/income` → `[]Income` (sắp xếp theo `received_at DESC`)
+- `POST /v1/income` body: `{"amount":50.0,"currency":"USD","source":"paypal","paypal_id":"<optional>","description":"...","received_at":"2026-02-01T00:00:00Z"}`
+  - → `201 Income`
+- `DELETE /v1/income/{id}` → `204 No Content`
+- `GET /v1/income/report` → `{"total_usd":float,"count":int,"by_source":{"paypal":50,...},"by_month":{"2026-02":50,...}}`

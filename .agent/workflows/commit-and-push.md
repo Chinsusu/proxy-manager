@@ -89,16 +89,25 @@ If the latest commit hash matches HEAD, commit succeeded.
 ### 6. Push to GitHub
 // turbo
 ```bash
-cd /opt/proxy-server-local && git push origin main 2>&1
+cd /opt/proxy-server-local && \
+  GIT_SSH_COMMAND="ssh -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=3" \
+  timeout 60 git push origin main 2>&1 && \
+  echo "PUSHED OK" || echo "PUSH FAILED"
 ```
 
 Expected output:
 ```
 To github.com:Chinsusu/proxy-manager.git
    <old_hash>..<new_hash>  main -> main
+PUSHED OK
 ```
 
----
+After push, verify commit is on remote:
+// turbo
+```bash
+cd /opt/proxy-server-local && git log --oneline origin/main -3
+```
+
 
 ## Troubleshooting
 

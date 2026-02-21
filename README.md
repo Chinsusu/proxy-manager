@@ -1,162 +1,205 @@
-# PGW — Proxy Gateway
+# PGW — Proxy Gateway Manager
 
-PGW ép toàn bộ HTTP/HTTPS (TCP 80/443) từ các **client trong LAN** đi qua **forwarder (:15001)**, forwarder sẽ dùng **upstream HTTP proxy** (có thể có user/pass) để đổi **exit IP**.  
-Kiến trúc gồm 4 thành phần:
+PGW ép toàn bộ HTTP/HTTPS (TCP 80/443) từ **client trong LAN** đi qua **forwarder (:15001)**, sử dụng **upstream HTTP/SOCKS5 proxy** để đổi **exit IP**.
 
-- **API** (`pgw-api`, :8080): quản lý `proxies / clients / mappings`, health-check, telemetry.
-- **Agent** (`pgw-agent`, :9090/agent): sinh & apply rules **nftables** từ `mappings`.
-- **Forwarder** (`pgw-fwd`, :15001): transparent CONNECT (+ ghi log SNI đã ẩn nhạy cảm).
-- **UI** (`pgw-ui`, :8081): dashboard & reverse proxy (`/api/*`→API, `/agent/*`→Agent).
-
-> Ràng buộc hiện tại: **mỗi client là 1 IP /32** (không nhận CIDR rộng hơn).
+**Phiên bản hiện tại: v1.6.0**
 
 ---
 
-## Nhanh gọn để chạy thử
+## Kiến trúc
 
-Yêu cầu: Go ≥ 1.22, Linux có `nft` (nftables), systemd.
+| Component | Binary | Port | Chức năng |
+|-----------|--------|------|-----------|
+| API | `pgw-api` | 8080 | REST API: proxies/clients/mappings/email/paypal/income, health-check, telemetry |
+| Agent | `pgw-agent` | 9090 | Sinh & apply rules **nftables** từ mappings |
+| Forwarder | `pgw-fwd` | 15001 | Transparent CONNECT, log ẩn nhạy cảm |
+| UI | `pgw-ui` | 8081 | Dashboard + reverse proxy (`/api/*` → API) |
+
+---
+
+## Quick Start
+
+**Yêu cầu:** Go ≥ 1.23, Linux + nftables, systemd.
 
 ```bash
-# Build từng thành phần
-go build -o bin/pgw-api   ./cmd/api
-go build -o bin/pgw-agent ./cmd/agent
-go build -o bin/pgw-fwd   ./cmd/fwd
-go build -o bin/pgw-ui    ./cmd/ui
+# Build
+cd /opt/proxy-server-local
+make build
 
+# Install
 sudo install -m 0755 bin/pgw-* /usr/local/bin/
 
-# Chạy dịch vụ (xem ví dụ systemd ở docs/deploy.md)
+# Start
 sudo systemctl restart pgw-api pgw-agent pgw-fwd pgw-ui
 ```
 
-Mặc định địa chỉ:
-
-* API: `http://127.0.0.1:8080`
-* Agent: `http://127.0.0.1:9090/agent`
-* UI: `http://127.0.0.1:8081` (proxy `/api/*` và `/agent/*`)
-* Forwarder: `:15001`
+Truy cập UI: `http://<server>:8081`
 
 ---
 
-## Cấu hình (env)
+## Cấu hình (Environment Variables)
 
-* **API**
+### API (`/etc/pgw/pgw.env`)
 
-  * `PGW_API_ADDR` (mặc định `:8080`)
-  * `PGW_STORE` = `memory` (mặc định) hoặc `file`
-  * `PGW_STORE_PATH` (khi `file`, ví dụ `/var/lib/pgw/state.json`)
-  * `PGW_HEALTH_INTERVAL` (ví dụ `30s`)
-* **Agent**
+| Biến | Mặc định | Mô tả |
+|------|----------|-------|
+| `PGW_API_ADDR` | `:8080` | Listen address |
+| `PGW_STORE` | `memory` | Storage: `memory`, `file`, `sqlite` |
+| `PGW_STORE_PATH` | `/var/lib/pgw/state.db` | Path (cho `file`/`sqlite`) |
+| `PGW_HEALTH_INTERVAL` | `30s` | Chu kỳ health-check proxy |
+| `PGW_JWT_SECRET` | — | **Bắt buộc** — khoá ký JWT |
+| `PGW_ADMIN_USER` | `admin` | Tên đăng nhập |
+| `PGW_ADMIN_PASS_HASH` | — | Argon2id PHC hash (khuyến nghị) |
+| `PGW_ADMIN_PASS` | — | Plain-text password (không khuyến nghị) |
+| `PGW_AGENT_TOKEN` | — | Token nội bộ cho Agent role |
 
-  * `PGW_AGENT_ADDR` (mặc định `:9090`)
-  * `PGW_API_BASE` (mặc định `http://127.0.0.1:8080`)
-  * `PGW_WAN_IFACE` (ví dụ `eth0`)
-  * `PGW_LAN_IFACE` (ví dụ `ens19`)
-* **Forwarder**
+### Agent
 
-  * `PGW_FWD_ADDR` (mặc định `:15001`)
-* **UI**
+| Biến | Mặc định | Mô tả |
+|------|----------|-------|
+| `PGW_AGENT_ADDR` | `:9090` | Listen address |
+| `PGW_API_BASE` | `http://127.0.0.1:8080` | URL của pgw-api |
+| `PGW_WAN_IFACE` | — | WAN interface (e.g. `eth0`) |
+| `PGW_LAN_IFACE` | — | LAN interface (e.g. `ens19`) |
 
-  * `PGW_UI_ADDR` (mặc định `:8081`)
-  * `PGW_UI_API` (mặc định `http://127.0.0.1:8080`)
-  * `PGW_UI_AGENT` (mặc định `http://127.0.0.1:9090/agent`)
+### Forwarder & UI
+
+| Biến | Mặc định | Mô tả |
+|------|----------|-------|
+| `PGW_FWD_ADDR` | `:15001` | Forwarder listen |
+| `PGW_UI_ADDR` | `:8081` | UI listen |
+| `PGW_UI_API` | `http://127.0.0.1:8080` | API URL cho UI |
+| `PGW_UI_AGENT` | `http://127.0.0.1:9090/agent` | Agent URL cho UI |
+
+> **Khuyến nghị production:** `PGW_STORE=sqlite`, `PGW_STORE_PATH=/var/lib/pgw/state.db`
+
+---
+
+## Authentication (JWT)
+
+```bash
+# Đăng nhập
+curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"Username":"admin","Password":"your-password"}' | jq .token
+
+# Sử dụng token
+curl -H "Authorization: Bearer <JWT>" http://localhost:8080/v1/proxies
+```
+
+Các endpoint trừ `/v1/health` và `/v1/auth/login` đều yêu cầu JWT.
+
+---
+
+## API nhanh
+
+```bash
+API=http://127.0.0.1:8080
+HDR="-H 'Authorization: Bearer $TOKEN' -H 'Content-Type: application/json'"
+
+# Thêm proxy
+curl -s $HDR -X POST $API/v1/proxies \
+  -d '{"type":"http","host":"1.2.3.4","port":8080,"username":"user","password":"pass","enabled":true}'
+
+# Thêm client
+curl -s $HDR -X POST $API/v1/clients \
+  -d '{"ip_cidr":"192.168.1.10/32","enabled":true}'
+
+# Tạo mapping
+curl -s $HDR -X POST $API/v1/mappings \
+  -d '{"client_id":"<CID>","proxy_id":"<PID>"}'
+
+# Reconcile (apply nftables)
+curl -s -X POST http://localhost:9090/agent/reconcile
+```
+
+Chi tiết: `docs/api.md` | OpenAPI: `docs/API_SPEC.yaml`
 
 ---
 
 ## Luồng hoạt động
 
-1. Tạo **proxy** (upstream) qua API/UI → health-check để có `status/latency/exit_ip`.
-2. Tạo **client** (IP **/32**).
-3. Tạo **mapping** client ↔ proxy.
-4. Agent `/agent/reconcile` sinh rules `nft`:
-
-   * NAT redirect TCP 80/443 từ IP client → `:15001`.
-   * Chặn leak ra WAN (`oifname "eth0" drop`), chặn UDP từ client, mở DNS 53 về gateway, mở input port 15001.
-5. Forwarder tiếp nhận kết nối, thực hiện CONNECT tới upstream, log (ẩn nhạy cảm).
-
----
-
-## API nhanh (cURL)
-
-```bash
-API=http://127.0.0.1:8080
-
-# Proxy (type: "http" hoặc "socks5")
-curl -s -H 'Content-Type: application/json' -d '{
-  "type":"http","host":"ipv4-vt-01.resvn.net","port":24639,
-  "username":"USER","password":"PASS","enabled":true
-}' $API/v1/proxies | jq .
-
-PID=$(curl -s $API/v1/proxies | jq -r '.[0].id')
-curl -s -X POST $API/v1/proxies/$PID/check | jq .
-
-# Client (chỉ /32, nếu thiếu "/32" thì API tự gắn "/32")
-curl -s -H 'Content-Type: application/json' \
-  -d '{"ip_cidr":"192.168.2.3/32","enabled":true}' \
-  $API/v1/clients | jq .
-
-# Mapping
-CID=$(curl -s $API/v1/clients | jq -r '.[0].id')
-curl -s -H 'Content-Type: application/json' \
-  -d '{"client_id":"'"$CID"'","proxy_id":"'"$PID"'"}' \
-  $API/v1/mappings | jq .
-
-# Xem
-curl -s $API/v1/mappings/active | jq .
+```
+Client (192.168.x.x) → TCP 80/443
+  → nftables NAT redirect → :15001 (pgw-fwd)
+    → pgw-fwd CONNECT → Upstream Proxy (HTTP/SOCKS5)
+      → Target server (exit IP đổi)
 ```
 
-Danh sách endpoint chi tiết: xem `docs/api.md`.
+---
+
+## Tính năng
+
+### Core (v1.0–v1.4)
+- Quản lý proxy upstream (HTTP/SOCKS5), client, mapping
+- Health-check tự động với telemetry (status/latency/exit_ip)
+- nftables rules tự động qua pgw-agent
+- JWT authentication
+- Dashboard UI (Vuexy theme)
+
+### Account Management (v1.5)
+- **Email management**: CRUD email accounts, liên kết PayPal
+- **PayPal management**: Quản lý tài khoản PayPal, balance
+- **Income tracking**: Ghi nhận thu nhập, nhóm theo nguồn/tháng
+- **Reports**: Biểu đồ Chart.js (monthly bar, source doughnut)
+
+### SQLite Store (v1.6)
+- Store backend: `PGW_STORE=sqlite` — dùng `modernc.org/sqlite` (pure Go)
+- WAL mode: concurrent reads khi write
+- Batch telemetry: 20K proxy updates trong 1 transaction (~1.4ms)
+- SQL aggregation cho income reports
 
 ---
 
-## Ghi chú bảo mật
+## Update
 
-* Agent cần quyền apply `nft` → chạy dưới user có quyền hoặc cấp quyền `sudo nft -f -` an toàn.
-* UI reverse-proxy chỉ nên bind `127.0.0.1` hoặc đặt sau reverse-proxy bên ngoài.
-* Log SNI/domain đã **ẩn bớt** thông tin nhạy cảm.
-* Chặn leak ngoài WAN & UDP tại `pgw_filter`.
+### Tự động (khuyến nghị)
+```bash
+bash /opt/proxy-server-local/update-pgw.sh
+```
+
+### Thủ công
+```bash
+cd /opt/proxy-server-local
+git pull origin main
+make build
+sudo systemctl stop pgw-api pgw-ui pgw-health pgw-agent
+sudo cp bin/pgw-* /usr/local/bin/
+sudo systemctl start pgw-agent pgw-api pgw-ui pgw-health
+```
+
+### Multi-node
+```bash
+./update-all-nodes.sh [nodes.txt]
+```
 
 ---
 
-## Giới hạn hiện tại
+## Tài liệu
 
-* **Chỉ hỗ trợ client IP /32** (theo Phương án A).
-* Upstream proxy hỗ trợ loại `http` và `socks5`.
-* `memory store` mất dữ liệu khi restart (dùng `file` để lưu bền).
+| Tài liệu | Nội dung |
+|----------|----------|
+| `docs/architecture.md` | Kiến trúc, nftables rules |
+| `docs/deploy.md` | Cài đặt, systemd, cấu hình |
+| `docs/api.md` | API endpoints |
+| `docs/API_SPEC.yaml` | OpenAPI spec |
+| `docs/CONFIG_REFERENCE.md` | Tham chiếu đầy đủ env vars |
+| `docs/QUICK_OPS.md` | Lệnh vận hành nhanh |
+| `docs/troubleshooting.md` | Xử lý lỗi |
+| `docs/security.md` | Bảo mật |
+| `docs/CODING_STANDARDS.md` | Coding standard |
+| `CHANGELOG.md` | Lịch sử thay đổi |
 
 ---
 
-## Tài liệu chi tiết
+## Giới hạn
 
-* `docs/architecture.md` – Kiến trúc & rule nftables sinh ra.
-* `docs/deploy.md` – Cài đặt, systemd units, biến môi trường.
-* `docs/api.md` – Tài liệu API.
-* `docs/ui.md` – Giao diện & reverse proxy.
-* `docs/troubleshooting.md` – Lỗi thường gặp & cách xử lý.
-* `docs/security.md` – Khuyến nghị bảo mật.
+- Client chỉ hỗ trợ `/32` (single IP)
+- Upstream proxy: `http` và `socks5`
+- `memory` store mất data khi restart → dùng `sqlite`
 
 ---
 
 ## License
 
 AGPL-3.0
-
-
----
-
-## Authentication (JWT)
-
-API và UI được bảo vệ bởi JWT.
-
-- Biến môi trường:
-  - `PGW_JWT_SECRET`: khoá ký JWT (bắt buộc).
-  - `PGW_ADMIN_USER` + `PGW_ADMIN_PASS_HASH` (Argon2id PHC) hoặc `PGW_ADMIN_PASS` (không khuyến nghị).
-  - (Tuỳ chọn) `PGW_AGENT_TOKEN`: token nội bộ cho Agent gọi API (được coi là role `agent`).
-- Đăng nhập:
-  - API: `POST /v1/auth/login` với `{username,password}` → trả `{"token":"<JWT>","role":"admin"}`.
-  - UI: `/login` (form), cookie `pgw_jwt` sẽ được set; UI sẽ forward Authorization tới API.
-- Sử dụng API:
-  - Thêm header `Authorization: Bearer <JWT>` cho mọi endpoint (trừ `/v1/health`, `/v1/auth/login`).
-  - Agent có thể POST `/v1/mappings/state` bằng `Authorization: Bearer ${PGW_AGENT_TOKEN}`.
-
-See docs/QUICK_OPS.md for a quick operations checklist.
