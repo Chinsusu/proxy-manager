@@ -309,7 +309,9 @@
         }
 
         function renderMappingsTable(mappings, nodeId, nodeProxies) {
-            const proxyOpts = nodeProxies.map(p =>
+            const usedProxyIds = new Set(mappings.map(m => m.proxy?.id).filter(Boolean));
+            const availableProxies = nodeProxies.filter(p => !usedProxyIds.has(p.id));
+            const proxyOpts = availableProxies.map(p =>
                 `<option value="${p.id}">${p.host}:${p.port} (${p.type})</option>`
             ).join('');
             const canCreate = nodeProxies.length > 0;
