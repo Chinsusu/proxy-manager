@@ -1035,18 +1035,18 @@ func main() {
 			return
 		}
 		// DELETE /v1/nodes/{id}/users/{userID}
-		if len(parts) == 3 && parts[1] == "users" {
+		// sub = "users/{userID}" (SplitN gives only 2 parts total)
+		if strings.HasPrefix(sub, "users/") && r.Method == http.MethodDelete {
+			userIDStr := strings.TrimPrefix(sub, "users/")
 			userID := 0
-			if _, err := fmt.Sscanf(parts[2], "%d", &userID); err != nil || userID <= 0 {
+			if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil || userID <= 0 {
 				httpx.JSON(w, 400, map[string]string{"error": "invalid user id"}); return
 			}
-			if r.Method == http.MethodDelete {
-				if !st.DeleteNodeUser(nodeID, userID) {
-					httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
-				}
-				w.WriteHeader(204)
-				return
+			if !st.DeleteNodeUser(nodeID, userID) {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
 			}
+			w.WriteHeader(204)
+			return
 		}
 
 		switch r.Method {
