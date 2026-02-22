@@ -34,6 +34,8 @@ type cfgAgent struct {
 
 var reconMu sync.Mutex
 
+type item struct{ id string; port int }
+
 func loadCfg() cfgAgent {
 	ag := config.LoadAgent()
 	interval := 15 * time.Second
@@ -157,7 +159,6 @@ func reconcile(cfg cfgAgent) error {
 	_ = runCmdIgnoreErr(cfg.NftBinary, "delete", "table", "inet", "pgw_filter")
 
 	// Determine the set of mapping IDs that were considered (have valid local port)
-	type item struct{ id string; port int }
 	selected := []item{}
 	for _, mv := range mvs {
 		if mv.LocalRedirectPort > 0 {
@@ -178,6 +179,10 @@ func reconcile(cfg cfgAgent) error {
 	for _, it := range selected {
 		_ = updateMappingState(cfg.APIBase, it.id, "APPLIED", it.port)
 	}
+
+	// Reconcile pgw-fwd@PORT services: start needed, stop unneeded
+	reconcileForwarders(selected)
+
 	return nil
 }
 
@@ -353,4 +358,48 @@ func updateMappingState(apiBase, id, state string, port int) error {
 		return fmt.Errorf("api %s: %s", resp.Status, string(bb))
 	}
 	return nil
+}
+
+// reconcileForwarders ensures pgw-fwd@PORT services match the desired port set.
+func reconcileForwarders(selected []item) {
+	desired := map[int]bool{}
+	for _, it := range selected {
+		desired[it.port] = true
+	}
+
+	// List running pgw-fwd@* units
+	out, _ := exec.Command("systemctl", "list-units", "--type=service", "--state=running", "--no-legend", "pgw-fwd@*").Output()
+	running := map[int]bool{}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" { continue }
+		fields := strings.Fields(line)
+		if len(fields) == 0 { continue }
+		name := strings.TrimPrefix(fields[0], "pgw-fwd@")
+		name = strings.TrimSuffix(name, ".service")
+		var port int
+		if _, err := fmt.Sscanf(name, "%d", &port); err == nil && port > 0 {
+			running[port] = true
+		}
+	}
+
+	// Start missing
+	for port := range desired {
+		if !running[port] {
+			unit := fmt.Sprintf("pgw-fwd@%d.service", port)
+			logging.Info.Printf("[agent] Starting %s", unit)
+			_ = exec.Command("systemctl", "start", unit).Run()
+			_ = exec.Command("systemctl", "enable", unit).Run()
+		}
+	}
+
+	// Stop excess
+	for port := range running {
+		if !desired[port] {
+			unit := fmt.Sprintf("pgw-fwd@%d.service", port)
+			logging.Info.Printf("[agent] Stopping %s (no longer needed)", unit)
+			_ = exec.Command("systemctl", "stop", unit).Run()
+			_ = exec.Command("systemctl", "disable", unit).Run()
+		}
+	}
 }
