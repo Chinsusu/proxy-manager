@@ -157,6 +157,11 @@ func transferBinary(client *gossh.Client, localPath, remotePath string) error {
 	_ = mkdirSess.Run("mkdir -p " + dir)
 	mkdirSess.Close()
 
+	// Stop the service if running to avoid "Text file busy"
+	stopSess, _ := client.NewSession()
+	_ = stopSess.Run("systemctl stop pgw-node 2>/dev/null; pkill -f pgw-node 2>/dev/null; true")
+	stopSess.Close()
+
 	// Encode binary to base64 and pipe through stdin
 	encoded := base64.StdEncoding.EncodeToString(data)
 	sess, err := client.NewSession()
