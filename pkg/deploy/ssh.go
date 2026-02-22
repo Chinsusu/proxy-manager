@@ -134,6 +134,44 @@ func buildLocalNodeBin() (string, error) {
 	return tmp.Name(), nil
 }
 
+// buildLocalAgentBin builds pgw-agent (cmd/agent) from the master's own codebase
+// and returns the path to the resulting binary.
+func buildLocalAgentBin() (string, error) {
+	// Find go binary
+	goBin := ""
+	for _, p := range []string{"/usr/local/go/bin/go", "/usr/bin/go", "/usr/local/bin/go"} {
+		if _, e := os.Stat(p); e == nil {
+			goBin = p
+			break
+		}
+	}
+	if goBin == "" {
+		return "", fmt.Errorf("go binary not found")
+	}
+
+	// Determine module root (where go.mod lives for proxy-server-local)
+	moduleRoot := "/opt/proxy-server-local"
+
+	tmp, err := os.CreateTemp("", "pgw-agent-*")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	cmd := exec.Command(goBin, "build", "-buildvcs=false", "-o", tmp.Name(), "./cmd/agent")
+	cmd.Dir = moduleRoot
+	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64", "CGO_ENABLED=0",
+		"PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin",
+		"HOME=/root",
+		"GOCACHE=/tmp/pgw-go-cache",
+		"GOPATH=/tmp/pgw-go-path")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.Remove(tmp.Name())
+		return "", fmt.Errorf("build pgw-agent: %w\n%s", err, out)
+	}
+	return tmp.Name(), nil
+}
+
+
 // transferBinary sends a local file to remotePath by base64-encoding it and
 // streaming through SSH stdin → base64 -d. No scp/sftp binary required on remote.
 func transferBinary(client *gossh.Client, localPath, remotePath string) error {
@@ -333,6 +371,20 @@ echo "pgw-node installed from GitHub"
 `
 		if err := run(strings.TrimSpace(installScript)); err != nil {
 			return "", err
+		}
+	}
+
+	// Step 2b: Build and transfer pgw-agent binary
+	log("[deploy] Step 2b/5: Install pgw-agent binary ...")
+	if agentBin, agentErr := buildLocalAgentBin(); agentErr != nil {
+		log(fmt.Sprintf("[deploy] WARN: pgw-agent build failed: %v — skipping", agentErr))
+	} else {
+		defer os.Remove(agentBin)
+		log("[deploy] Transferring pgw-agent binary via SSH ...")
+		if err := transferBinary(client, agentBin, "/usr/local/bin/pgw-agent"); err != nil {
+			log(fmt.Sprintf("[deploy] WARN: pgw-agent transfer failed: %v", err))
+		} else {
+			log("[deploy] pgw-agent binary transferred ✓")
 		}
 	}
 
