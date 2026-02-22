@@ -905,21 +905,25 @@ class EmailManager {
     } catch (e) { this.pgw.showToast('Error', 'danger'); }
   }
 
+  // Format a date — returns '' if zero/invalid
+  fmtDate(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    if (isNaN(d) || d.getFullYear() < 1970) return '—';
+    return d.toLocaleDateString('vi-VN');
+  }
+
   render() {
     const tbody = document.getElementById('tbody-emails');
     const badge = document.getElementById('email-count');
     if (!tbody) return;
     if (badge) badge.textContent = this.data.length + ' emails';
     if (!this.data.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No emails yet</td></tr>'; return;
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No emails yet</td></tr>'; return;
     }
     const statusBadge = s => {
       const m = { active: 'success', disabled: 'secondary', banned: 'danger' };
       return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
-    };
-    const providerIcon = p => {
-      const m = { gmail: 'google', outlook: 'microsoft', yahoo: 'yahoo' };
-      return m[p] || p;
     };
     tbody.innerHTML = this.data.map(e => `
       <tr>
@@ -928,13 +932,56 @@ class EmailManager {
         <td>${statusBadge(e.status || 'active')}</td>
         <td>${e.paypal_id ? '<span class="badge bg-label-warning">Linked</span>' : '<span class="text-muted">—</span>'}</td>
         <td class="text-muted small">${e.note || '—'}</td>
-        <td class="text-muted small">${new Date(e.created_at).toLocaleDateString('vi-VN')}</td>
+        <td class="text-muted small">${this.fmtDate(e.created_at)}</td>
         <td>
-          <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.emailMgr.deleteEmail('${e.id}')" title="Delete">
-            <i class="bi bi-trash"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-icon btn-label-warning" onclick="window.emailMgr.editEmail('${e.id}')" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.emailMgr.deleteEmail('${e.id}')" title="Delete">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </td>
       </tr>`).join('');
+  }
+
+  editEmail(id) {
+    const e = this.data.find(x => x.id === id);
+    if (!e) return;
+    // Populate modal fields
+    document.getElementById('edit-email-id').value = e.id;
+    document.getElementById('edit-email-address').value = e.address || '';
+    document.getElementById('edit-email-provider').value = e.provider || 'gmail';
+    document.getElementById('edit-email-status').value = e.status || 'active';
+    document.getElementById('edit-email-password').value = e.password || '';
+    document.getElementById('edit-email-recovery').value = e.recovery_email || '';
+    document.getElementById('edit-email-note').value = e.note || '';
+    const modal = new bootstrap.Modal(document.getElementById('editEmailModal'));
+    modal.show();
+  }
+
+  async saveEmail() {
+    const id = document.getElementById('edit-email-id').value;
+    const body = {
+      address: document.getElementById('edit-email-address').value.trim(),
+      provider: document.getElementById('edit-email-provider').value,
+      status: document.getElementById('edit-email-status').value,
+      password: document.getElementById('edit-email-password').value.trim(),
+      recovery_email: document.getElementById('edit-email-recovery').value.trim(),
+      note: document.getElementById('edit-email-note').value.trim(),
+    };
+    try {
+      const res = await fetch('/api/v1/emails/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      bootstrap.Modal.getInstance(document.getElementById('editEmailModal'))?.hide();
+      this.pgw.showToast('Email updated', 'success');
+      await this.load();
+    } catch (err) { this.pgw.showToast('Error: ' + err.message, 'danger'); }
   }
 }
 
