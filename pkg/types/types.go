@@ -152,4 +152,6 @@ type MappingStatusReport struct {
 	ProxyStatus string `json:"proxy_status"`
 	LatencyMs   int    `json:"latency_ms"`
 	ExitIP      string `json:"exit_ip"`
+	Region      string `json:"region,omitempty"`
+	ISP         string `json:"isp,omitempty"`
 }

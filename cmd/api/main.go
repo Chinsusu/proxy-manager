@@ -921,9 +921,9 @@ func main() {
 			for _, ms := range hb.Mappings {
 				_ = st.UpdateMappingState(ms.MappingID, ms.State, 0)
 				if ms.LatencyMs > 0 || ms.ProxyStatus != "" {
-					proxyID := ms.ProxyID
-					if proxyID == "" { proxyID = ms.MappingID } // backward compat
-					st.SetProxyTelemetry(proxyID, types.ProxyStatus(ms.ProxyStatus), ms.LatencyMs, ms.ExitIP, "", "")
+						proxyID := ms.ProxyID
+						if proxyID == "" { proxyID = ms.MappingID } // backward compat
+						st.SetProxyTelemetry(proxyID, types.ProxyStatus(ms.ProxyStatus), ms.LatencyMs, ms.ExitIP, ms.Region, ms.ISP)
 				}
 			}
 			w.WriteHeader(204)
