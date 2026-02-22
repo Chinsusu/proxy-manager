@@ -296,6 +296,36 @@
             </table>` + form;
         }
 
+        // Lightweight tick: only update proxy rows (latency/status) without re-rendering mappings
+        async function refreshProxiesOnly() {
+            const [nodesRes, proxiesRes] = await Promise.all([
+                fetch(api('/v1/nodes'), { headers: hdr() }),
+                fetch(api('/v1/proxies'), { headers: hdr() }),
+            ]);
+            const nodes = nodesRes.ok ? (await nodesRes.json() || []) : [];
+            const proxies = proxiesRes.ok ? (await proxiesRes.json() || []) : [];
+
+            // Update stats
+            document.getElementById('stat-online').textContent = nodes.filter(n => n.status === 'online').length;
+            document.getElementById('stat-offline').textContent = nodes.filter(n => n.status === 'offline').length;
+            document.getElementById('stat-deploying').textContent = nodes.filter(n => n.status === 'deploying').length;
+
+            // Update only the proxy panel inside each existing card
+            nodes.forEach(n => {
+                const proxyPanel = document.getElementById('proxy-panel-' + n.id);
+                if (!proxyPanel) return; // card not rendered yet — skip
+                const nodeProxies = proxies.filter(p => p.node_id === n.id);
+                proxyPanel.innerHTML = renderProxiesTable(nodeProxies);
+                const badge = document.getElementById('proxy-count-' + n.id);
+                if (badge) badge.textContent = nodeProxies.length;
+                // Update last-seen
+                const ts = document.getElementById('lastseen-' + n.id);
+                if (ts) ts.textContent = timeSince(n.last_seen_at);
+                const sb = document.getElementById('status-badge-' + n.id);
+                if (sb) sb.outerHTML = statusBadge(n.status);
+            });
+        }
+
         async function refresh() {
             const [nodesRes, proxiesRes, mappingsRes] = await Promise.all([
                 fetch(api('/v1/nodes'), { headers: hdr() }),
@@ -354,7 +384,7 @@
                     })()}
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <small class="text-muted">${timeSince(n.last_seen_at)}</small>
+                            <small class="text-muted" id="lastseen-${n.id}">${timeSince(n.last_seen_at)}</small>
                             <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')"><i class="bi bi-cloud-upload"></i></button>
                             <button class="btn btn-xs btn-outline-info"    title="Log"    onclick="NodeManager.showDeployLog('${n.id}','${n.name}')"><i class="bi bi-journal-text"></i></button>
                             <button class="btn btn-xs btn-outline-danger"  title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')"><i class="bi bi-trash"></i></button>
@@ -377,10 +407,10 @@
                         <div class="col-md-6 border-end">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-diagram-3 me-1"></i>Proxies
-                                    <span class="badge bg-label-primary ms-1">${nodeProxies.length}</span>
+                                    <span class="badge bg-label-primary ms-1" id="proxy-count-${n.id}">${nodeProxies.length}</span>
                                 </span>
                             </div>
-                            <div class="px-2 pb-2">
+                            <div class="px-2 pb-2" id="proxy-panel-${n.id}">
                                 ${renderProxiesTable(nodeProxies)}
                             </div>
                         </div>
@@ -552,7 +582,7 @@
 
         document.getElementById('btnAddNode').addEventListener('click', addNode);
         refresh();
-        setInterval(refresh, 15000);
+        setInterval(refreshProxiesOnly, 15000);
 
         return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping, unassignProxy, assignEmail };
     })();
