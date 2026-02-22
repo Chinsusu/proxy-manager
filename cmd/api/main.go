@@ -1074,6 +1074,16 @@ func reconcileNow() error {
 
 func runHealthTick(st store.Store) {
 	proxies := st.ListProxies()
+
+	// Build set of node IDs that are currently online
+	// so we can skip proxies already checked by their node agent
+	onlineNodes := make(map[string]bool)
+	for _, n := range st.ListNodes() {
+		if n.Status == "online" {
+			onlineNodes[n.ID] = true
+		}
+	}
+
 	type result struct {
 		id      string
 		status  types.ProxyStatus
@@ -1088,6 +1098,10 @@ func runHealthTick(st store.Store) {
 	sem := make(chan struct{}, 10) // max 10 concurrent checks
 	for _, p := range proxies {
 		if p.Type != "http" && p.Type != "socks5" {
+			continue
+		}
+		// If proxy is assigned to an online node, the node checks it via heartbeat — skip here
+		if p.NodeID != nil && *p.NodeID != "" && onlineNodes[*p.NodeID] {
 			continue
 		}
 		wg.Add(1)
