@@ -414,7 +414,7 @@
                         <div class="d-flex align-items-center gap-3 flex-wrap">
                             <button class="btn btn-link p-0 text-body fw-bold text-decoration-none d-flex align-items-center gap-2"
                                     data-bs-toggle="collapse" data-bs-target="#node-body-${n.id}"
-                                    aria-expanded="true" style="font-size:inherit">
+                                    aria-expanded="false" style="font-size:inherit">
                                 <i class="bi bi-chevron-down collapse-icon" id="chevron-${n.id}" style="font-size:.75rem;transition:transform .2s"></i>
                                 ${n.name}
                             </button>
@@ -451,7 +451,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="collapse show" id="node-body-${n.id}">
+                <div class="collapse" id="node-body-${n.id}">
                     <div class="row g-0">
                         <!-- Proxies panel -->
                         <div class="col-md-6 border-end">
