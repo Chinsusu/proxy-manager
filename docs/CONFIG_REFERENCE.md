@@ -1,57 +1,86 @@
-
 # Configuration Reference
 
-## API (`pgw-api`)
-| Env Var | Mặc định | Mô tả |
-|---------|---------|-------|
+## API (`pgw-api`) — Master
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
+| `PGW_STORE` | `sqlite` | Store type: `sqlite` (khuyến nghị), `file`, `memory` |
+| `PGW_STORE_PATH` | `/var/lib/pgw/state.db` | Path SQLite DB hoặc JSON file |
 | `PGW_API_ADDR` | `:8080` | Listen address |
-| `PGW_JWT_SECRET` | *(bắt buộc)* | Khoá ký JWT; tối thiểu 32 ký tự |
-| `PGW_JWT_STRICT` | `true` | `false` để bỏ qua validation JWT secret (chỉ dành cho dev) |
-| `PGW_STORE` | `memory` | `memory`, `file`, hoặc `sqlite` |
-| `PGW_STORE_PATH` | `/var/lib/pgw/state.db` | Path khi dùng `file`/`sqlite` (`.json` cho file, `.db` cho sqlite) |
-| `PGW_HEALTH_INTERVAL` | `30s` | Chu kỳ health check |
+| `PGW_HEALTH_INTERVAL` | `30s` | Chu kỳ health-check proxy |
+| `PGW_STRICT_OUTPUT` | `true` | Ẩn thông tin nhạy cảm trong API response |
+| `JWT_SECRET` | *(bắt buộc)* | Khoá ký JWT, tối thiểu 32 ký tự |
 | `PGW_ADMIN_USER` | — | Username admin |
-| `PGW_ADMIN_PASS_HASH` | — | Argon2id PHC hash của password admin (khuyến nghị) |
-| `PGW_ADMIN_PASS` | — | Password admin dạng plain (không khuyến nghị; tự hash khi start) |
-| `PGW_AGENT_TOKEN` | — | Token nội bộ cho Agent gọi API (role `agent`) |
-| `PGW_FWD_BASE_PORT` | `15001` | Port thấp nhất trong dải tự cấp cho forwarder |
-| `PGW_FWD_MAX_PORT` | `15999` | Port cao nhất trong dải tự cấp cho forwarder |
-| `PGW_ENFORCE_HEALTH` | `false` | `true` = `/v1/mappings/active` lọc bỏ mapping `FAILED` |
+| `PGW_ADMIN_PASS_HASH` | — | Argon2id PHC hash (khuyến nghị) |
+| `PGW_ADMIN_PASS` | — | Password plain (API tự hash khi start) |
+| `PGW_AGENT_TOKEN` | — | JWT dài hạn cho agent/node gọi API (role `agent`) |
+| `PGW_FWD_BASE_PORT` | `15001` | Port thấp nhất cho forwarder tự cấp |
+| `PGW_FWD_MAX_PORT` | `15999` | Port cao nhất cho forwarder tự cấp |
 
-## Agent (`pgw-agent`)
-| Env Var | Mặc định | Mô tả |
-|---------|---------|-------|
+## Agent (`pgw-agent`) — Node
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
 | `PGW_AGENT_ADDR` | `:9090` | Listen address |
-| `PGW_API_BASE` | `http://127.0.0.1:8080` | Base URL của API |
-| `PGW_WAN_IFACE` | `eth0` | Tên interface WAN |
-| `PGW_LAN_IFACE` | `ens19` | Tên interface LAN |
-| `PGW_AGENT_RECONCILE` | `15s` | Chu kỳ reconcile định kỳ |
-| `PGW_AGENT_TOKEN` | — | Token để Agent gọi API (cùng giá trị với API) |
+| `PGW_API_BASE` | `http://127.0.0.1:8080` | Base URL của master API |
+| `PGW_WAN_IFACE` | `eth0` | Interface WAN của node |
+| `PGW_LAN_IFACE` | `ens19` | Interface LAN của node |
+| `PGW_AGENT_RECONCILE` | `15s` | Chu kỳ reconcile nftables |
+| `PGW_AGENT_TOKEN` | — | Token để gọi master API |
 
-## Forwarder (`pgw-fwd`)
-| Env Var | Mặc định | Mô tả |
-|---------|---------|-------|
-| `PGW_FWD_ADDR` | `192.168.2.1:<port>` | Listen address (bind vào LAN IP để tránh routing loop) |
-| `PGW_API_BASE` | `http://127.0.0.1:8080` | Base URL của API |
-| `PGW_AGENT_TOKEN` | — | Token để Forwarder gọi `/v1/mappings/active` |
-| `PGW_FWD_DIAL_TIMEOUT` | `5s` | Timeout kết nối TCP tới upstream proxy |
+> Agent tự bật `net.ipv4.ip_forward=1` khi khởi động.
+
+## Forwarder (`pgw-fwd`) — Node
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
+| `PGW_FWD_ADDR` | `:%i` | Listen address (systemd template: `PGW_FWD_ADDR=:15001`) |
+| `PGW_API_BASE` | `https://pgw.eaktur.com` | Base URL của master API |
+| `PGW_AGENT_TOKEN` | — | Token để poll `/v1/mappings/active` |
+| `PGW_FWD_DIAL_TIMEOUT` | `5s` | Timeout TCP tới upstream proxy |
 | `PGW_FWD_POLL_INTERVAL` | `30s` | Chu kỳ re-resolve upstream (hot-reload) |
-| `PGW_FWD_MAX_CONNS` | `8192` | Số kết nối concurrent tối đa |
-| `PGW_FWD_LOG_SAMPLE` | `100` | Log 1 trong N kết nối thành công (1 = log tất cả) |
-| `PGW_FWD_IDLE_TIMEOUT` | `30m` | Timeout idle cho splice connection |
-| `PGW_FWD_DRAIN_TIMEOUT` | `30s` | Thời gian chờ drain connections khi shutdown |
+| `PGW_FWD_MAX_CONNS` | `8192` | Max concurrent connections |
+| `PGW_FWD_LOG_SAMPLE` | `100` | Log 1 trong N kết nối thành công |
+| `PGW_FWD_IDLE_TIMEOUT` | `30m` | Idle timeout cho splice connection |
+| `PGW_FWD_DRAIN_TIMEOUT` | `30s` | Drain timeout khi graceful shutdown |
 
-## UI (`pgw-ui`)
-| Env Var | Mặc định | Mô tả |
-|---------|---------|-------|
+## Node (`pgw-node`) — Node
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
+| `PGW_API_BASE` | — | Base URL của master API (public URL) |
+| `PGW_NODE_ID` | — | Node ID từ master |
+| `PGW_AGENT_TOKEN` | — | JWT để heartbeat + check proxy |
+| `PGW_HEALTH_INTERVAL` | `30s` | Chu kỳ health-check proxy và heartbeat |
+
+## UI (`pgw-ui`) — Master
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
 | `PGW_UI_ADDR` | `:8081` | Listen address |
-| `PGW_UI_API` | `http://127.0.0.1:8080` | Forward `/api/*` tới đây |
-| `PGW_UI_AGENT` | `http://127.0.0.1:9090/agent` | Forward `/agent/*` tới đây |
-| `PGW_JWT_SECRET` | *(bắt buộc)* | Khoá verify JWT (cùng giá trị với API) |
+| `PGW_UI_API` | `http://127.0.0.1:8080` | Forward `/api/*` tới API |
+| `PGW_UI_AGENT` | `http://127.0.0.1:9090/agent` | Forward `/agent/*` tới Agent |
+| `JWT_SECRET` | *(bắt buộc)* | Verify JWT cookie (cùng giá trị với API) |
 
-## Webhook (`pgw-webhook`)
-| Env Var | Mặc định | Mô tả |
-|---------|---------|-------|
-| `PGW_WEBHOOK_SECRET` | *(bắt buộc)* | HMAC secret để verify GitHub webhook signatures |
+## Webhook (`pgw-webhook`) — Master (optional)
+
+| Env Var | Default | Mô tả |
+|---------|---------|--------|
+| `PGW_WEBHOOK_SECRET` | *(bắt buộc)* | HMAC secret verify GitHub webhook |
 | `PGW_WEBHOOK_PORT` | `9091` | Listen port |
-| `PGW_WEBHOOK_DEPLOY_SCRIPT` | `/usr/local/bin/update-pgw.sh` | Script chạy khi push tới `main` |
+| `PGW_WEBHOOK_DEPLOY_SCRIPT` | `/usr/local/bin/update-pgw.sh` | Script chạy khi push `main` |
+
+## File `/etc/pgw/pgw.env` (Node — auto-generated bởi deploy script)
+
+```env
+# PGW Node config (auto-generated by master deploy)
+PGW_STORE=sqlite
+PGW_STORE_PATH=/var/lib/pgw/state.db
+PGW_API_ADDR=:8080
+PGW_HEALTH_INTERVAL=30s
+PGW_STRICT_OUTPUT=true
+PGW_WAN_IFACE=eth0
+PGW_LAN_IFACE=ens19
+PGW_API_BASE=https://pgw.eaktur.com
+PGW_AGENT_TOKEN=<long-lived-jwt>
+```

@@ -1,21 +1,71 @@
 # Kiến trúc hệ thống
 
+## Tổng quan
+
+Hệ thống PGW (Proxy Gateway) gồm hai tier:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ MASTER SERVER (proxy-server-local)                              │
+│                                                                 │
+│  pgw-api (:8080)  ─── SQLite ─── pgw-health                   │
+│  pgw-ui  (:8081)                                               │
+│  pgw-webhook (:9091)                                           │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │ HTTPS + JWT
+┌─────────────────────▼───────────────────────────────────────────┐
+│ NODE VPS (ví dụ: 154.37.91.171)                                │
+│                                                                 │
+│  pgw-node          ← poll master, check proxy, heartbeat       │
+│  pgw-agent (:9090) ← reconcile nftables, bật ip_forward        │
+│  pgw-fwd@15001     ← transparent TCP proxy → upstream          │
+│  pgw-fwd@15002     ← ...                                       │
+│  dnsmasq (:53)     ← DNS cho LAN clients                       │
+└─────────────────────────────────────────────────────────────────┘
+         │ LAN (ens19, 192.168.2.1/24)
+    ┌────┴──────────────────────────┐
+    │ Clients (192.168.2.101-103)   │
+    └───────────────────────────────┘
+```
+
 ## Thành phần
 
-- **pgw-api (:8080)**: CRUD proxies/clients/mappings; health-check; telemetry.
-- **pgw-agent (:9090/agent)**: gọi API `/v1/mappings/active` → render script `nft` → `nft -f -`.
-- **pgw-fwd (per-port, ví dụ :15001, :15002)**: TCP listener; transparent CONNECT (+SNI log ẩn PII); nối upstream proxy.
-- **pgw-ui (:8081)**: giao diện web; reverse proxy `/api/*`→API, `/agent/*`→Agent.
+### Master Server
 
-## nftables sinh ra
+| Service | Port | Mô tả |
+|---------|------|--------|
+| `pgw-api` | `:8080` | REST API: CRUD proxy/client/mapping, health-check, telemetry |
+| `pgw-ui` | `:8081` | Web UI, reverse proxy `/api/*` → API |
+| `pgw-health` | internal | Health-check và geo-lookup định kỳ (30s) |
+| `pgw-webhook` | `:9091` | GitHub webhook auto-deploy |
+
+### Node VPS
+
+| Service | Mô tả |
+|---------|--------|
+| `pgw-node` | Poll master mỗi 15s: lấy assignments, check proxy health, gửi heartbeat |
+| `pgw-agent` | Reconcile nftables mỗi 15s, expose `/agent/reconcile` (:9090), bật ip_forward |
+| `pgw-fwd@<port>` | Transparent TCP forwarder (1 instance/port), poll master để lấy upstream credentials |
+| `dnsmasq` | DNS server cho LAN clients (192.168.2.1:53) |
+
+## Network flow
+
+```
+Client (192.168.2.101) → TCP :443 →
+  nftables prerouting [REDIRECT] → :15001 →
+    pgw-fwd@15001 [CONNECT tunnel] → upstream http proxy:port →
+      Internet
+```
+
+## nftables sinh ra bởi pgw-agent
 
 ```nft
 table ip pgw {
   chain prerouting {
     type nat hook prerouting priority dstnat; policy accept;
-    # cho từng client /32 (hoặc tập hợp nếu về sau mở rộng):
-    iifname "ens19" ip saddr 192.168.2.3/32 tcp dport {80,443} redirect to :15001
-    # ...
+    iifname "ens19" ip saddr 192.168.2.101/32 tcp dport {80,443} redirect to :15001
+    iifname "ens19" ip saddr 192.168.2.102/32 tcp dport {80,443} redirect to :15002
+    iifname "ens19" ip saddr 192.168.2.103/32 tcp dport {80,443} redirect to :15003
   }
 }
 
@@ -23,47 +73,40 @@ table inet pgw_filter {
   chain forward {
     type filter hook forward priority filter; policy accept;
     ct state established,related accept
-
-    # chặn toàn bộ IPv6 LAN→WAN
-    iifname "ens19" oifname "eth0" meta nfproto ipv6 drop
-
-    # chặn leak ra WAN & chặn UDP từ client
-    ip saddr 192.168.2.3/32 oifname "eth0" drop
-    ip saddr 192.168.2.3/32 meta l4proto udp drop
-    # ...
+    iifname "ens19" oifname "eth0" meta nfproto ipv6 drop  # block IPv6 leak
+    ip saddr 192.168.2.101/32 oifname "eth0" drop          # block direct WAN
+    ip saddr 192.168.2.101/32 meta l4proto udp drop        # block UDP
+    # (repeat cho các client)
   }
 
   chain input {
     type filter hook input priority filter; policy accept;
-
-    # mở DNS (53) từ LAN vào gateway
-    iifname "ens19" ip saddr 192.168.2.3/32 udp dport 53 accept
-    iifname "ens19" ip saddr 192.168.2.3/32 tcp dport 53 accept
-
-    # mở cổng forwarder
-    iifname "ens19" ip saddr 192.168.2.3/32 tcp dport 15001 accept
-
-    # chặn mọi kết nối LAN→các cổng forwarder không nằm trong whitelist per-client
-    iifname "ens19" tcp dport 15001-15999 drop
+    ct state established,related accept
+    iifname "ens19" ip saddr 192.168.2.101/32 udp dport 53 accept  # DNS
+    iifname "ens19" ip saddr 192.168.2.101/32 tcp dport 53 accept
+    iifname "ens19" ip saddr 192.168.2.101/32 tcp dport 15001 accept
+    iifname "ens19" tcp dport 15001-15999 drop  # chặn cross-client
   }
 }
 ```
 
-> Tên interface: `ens19` (LAN), `eth0` (WAN) có thể chỉnh bằng env Agent.
+> Interfaces: `ens19` (LAN), `eth0` (WAN) — cấu hình trong `/etc/pgw/pgw.env`.
 
-## Ràng buộc /32
+## Ràng buộc
 
-* API chỉ chấp nhận `ip_cidr` với prefix **= 32**. Nếu người dùng nhập IP không có `/`, API tự chuyển thành `/32`. Nếu prefix `< 32` trả 400.
+- **Client IP**: chỉ chấp nhận `/32`. API tự thêm `/32` nếu không có prefix.
+- **Mapping model**: 1 client ↔ 1 port (tái sử dụng nếu cùng client, cấp mới nếu chưa có).
+- **Port range**: `PGW_FWD_BASE_PORT`..`PGW_FWD_MAX_PORT` (mặc định 15001..15999).
+- **Auto-apply**: mapping chỉ active khi upstream proxy health = OK.
 
-## Hành vi mặc định (từ v1.1)
+## Data store
 
-> Agent sinh rule cho mapping ở trạng thái **APPLIED hoặc PENDING**; FAILED sẽ không có rule (đường bị đóng).
+SQLite (`PGW_STORE=sqlite`) — single file `/var/lib/pgw/state.db`. WAL mode, transaction batching cho telemetry. Không cần PostgreSQL hay NATS.
 
-> Agent fetch tất cả mappings qua `GET /v1/mappings` (không phải `/v1/mappings/active`). Forwarder mới dùng `/v1/mappings/active` để resolve upstream theo port.
+## Deploy node (one-command)
 
-- Mô hình 1 cổng ↔ 1 client: mỗi client có một cổng forwarder riêng; nếu cùng một client tạo thêm mapping, sẽ tái sử dụng chính cổng đó. API tự gán cổng theo client (tái sử dụng nếu có, cấp mới nếu chưa có, trong khoảng 15001..15999 hoặc theo PGW_FWD_BASE_PORT/PGW_FWD_MAX_PORT). Lần đầu dùng cổng, API sẽ cố gắng start `pgw-fwd@<port>`, tạo file cờ `/var/lib/pgw/ports/<port>`, gọi Agent `reconcile`, và đánh dấu **APPLIED** khi hợp lệ.
-- Khi xoá Mapping, API sẽ: nếu không còn mapping nào dùng cùng `port` đó thì xoá file cờ tương ứng và gọi `systemctl stop pgw-fwd@<port>` (an toàn nếu unit không tồn tại). Cuối cùng luôn gọi Agent `reconcile` để đồng bộ nftables.
-
-
-Lưu ý (an toàn): Chỉ apply mapping sau khi kiểm tra health của proxy thành công (OK/DEGRADED).
-Nếu health thất bại, mapping ở trạng thái FAILED và sẽ không khởi động forwarder/cấp rule.
+Từ master, gọi API:
+```
+POST /v1/nodes/{id}/deploy
+```
+API sẽ SSH vào node, build và transfer binaries (`pgw-node`, `pgw-agent`, `pgw-fwd`), cài dnsmasq, cấu hình systemd units, enable ip_forward, configure ens19 netplan.

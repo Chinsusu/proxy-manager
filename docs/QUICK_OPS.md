@@ -1,70 +1,109 @@
-# PGW Quick Operations Checklist (Ubuntu 22.04)
+# QUICK OPS — PGW Proxy Gateway
 
-0) One-click install
+## Kiểm tra nhanh trạng thái
 
-Ubuntu 22.04 – run:
+```bash
+# Master
+systemctl status pgw-api pgw-ui pgw-health
 
+# Node (SSH vào node)
+systemctl is-active pgw-node pgw-agent dnsmasq
+sysctl net.ipv4.ip_forward           # phải là 1
+ss -tlnp | grep -E "15001|15002|15003"  # pgw-fwd listening
+ss -tlunp | grep 53                  # dnsmasq listening
+nft list table ip pgw                # redirect rules
+```
 
+## Tạo Proxy + Client + Mapping (curl)
 
+```bash
+# Login
+TOKEN=$(curl -s -X POST http://localhost:8080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"<pass>"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
 
-1) System prep
-- Ensure packages: nftables, dnsmasq
-- Sysctl: /etc/sysctl.d/99-pgw.conf
-  - net.ipv4.ip_forward=1
-  - net.ipv4.conf.all.rp_filter=0
-  - net.ipv4.conf.default.rp_filter=0
-  - (Optional) disable IPv6 host-wide for simplicity
-- Apply: sysctl --system
+# Tạo proxy
+PROXY_ID=$(curl -s -X POST http://localhost:8080/v1/proxies \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"type":"http","host":"1.2.3.4","port":8080,"username":"u","password":"p","enabled":true}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
 
-2) Env file (/etc/pgw/pgw.env)
-- PGW_JWT_SECRET=...
-- PGW_API_ADDR=:8080
-- PGW_AGENT_ADDR=:9090
-- PGW_UI_ADDR=:8081
-- PGW_WAN_IFACE=eth0
-- PGW_LAN_IFACE=ens19
-- PGW_FORWARDER_BASE_PORT=15001
-- PGW_FWD_MAX_PORT=15999
-- (Important) PGW_AGENT_TOKEN=... (random)
+# Tạo client (IP/32)
+CLIENT_ID=$(curl -s -X POST http://localhost:8080/v1/clients \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"ip_cidr":"192.168.2.101"}' \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
 
-3) Build & install
-- make build or:
-  - go build -o bin/pgw-api   ./cmd/api
-  - go build -o bin/pgw-agent ./cmd/agent
-  - go build -o bin/pgw-ui    ./cmd/ui
-  - go build -o bin/pgw-fwd   ./cmd/fwd
-- install -m 0755 bin/pgw-* /usr/local/bin/
+# Tạo mapping
+curl -s -X POST http://localhost:8080/v1/mappings \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"client_id\":\"$CLIENT_ID\",\"proxy_id\":\"$PROXY_ID\"}"
+```
 
-4) Services (systemd)
-- Enable/Start: pgw-api, pgw-agent, pgw-ui
-- pgw-agent must have CAP_NET_ADMIN (AmbientCapabilities)
-- (Optional) pgw-health
+## Deploy node mới
 
-5) DNS for LAN clients
-- dnsmasq on gateway 192.168.2.1:53 (ens19)
-- Consider filter-AAAA to avoid IPv6 timeouts
+```bash
+# Thêm node qua API
+curl -s -X POST http://localhost:8080/v1/nodes \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"154.37.91.171","ssh_user":"root","ssh_pass":"<pass>","lan_subnet":"192.168.2.1/24"}'
 
-6) Create resources
-- Create Proxy (type=http, host:port, username/password, enabled=true)
-- Health check Proxy → expect OK/DEGRADED
-- Create Client (IPv4 only, /32)
-- Create Mapping (client ↔ proxy)
+# Deploy node (install all binaries + config trên node VPS)
+curl -s -X POST http://localhost:8080/v1/nodes/<node-id>/deploy \
+  -H "Authorization: Bearer $TOKEN"
+```
 
-7) Verify apply
-- Forwarder: systemctl status pgw-fwd@<port> (active)
-- nftables:
-  - nft list table ip pgw | grep "ip saddr <client> ... redirect to :<port>"
-  - nft list table inet pgw_filter (DROP LAN→WAN, allow DNS 53 and port)
-- Traffic from client (192.168.2.X):
-  - DNS: nslookup icanhazip.com 192.168.2.1
-  - HTTP/S: curl https://icanhazip.com → exit IP = proxy IP
+## Reconcile thủ công
 
-8) Cleanup
-- Delete mapping → agent reconcile → rules removed
-- If port unused → system stops pgw-fwd@<port>
+```bash
+# Trên node — gọi agent để re-apply nftables
+curl -s http://127.0.0.1:9090/agent/reconcile
+```
 
-9) Troubleshooting
-- Logs: journalctl -u pgw-api|pgw-agent|pgw-fwd@<port> -n 200 --no-pager
-- Verify env: /etc/pgw/pgw.env
-- Confirm interfaces match real NICs (eth0/ens19)
+## Restart services
 
+```bash
+# Master
+systemctl restart pgw-api && systemctl status pgw-api
+
+# Node (SSH)
+systemctl restart pgw-node pgw-agent
+systemctl restart pgw-fwd@15001 pgw-fwd@15002 pgw-fwd@15003
+```
+
+## Xem log
+
+```bash
+# Master
+journalctl -u pgw-api -n 100 --no-pager
+journalctl -u pgw-health -n 50 --no-pager
+
+# Node (SSH)
+journalctl -u pgw-node -n 50 --no-pager
+journalctl -u pgw-agent -n 50 --no-pager
+journalctl -u pgw-fwd@15001 -n 50 --no-pager
+```
+
+## Kiểm tra proxy health thủ công
+
+```bash
+curl -s -X POST http://localhost:8080/v1/proxies/<id>/check \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+## Check node status qua SSH (từ master)
+
+```bash
+JWT_SECRET=$(grep JWT_SECRET /etc/pgw/pgw.env | cut -d= -f2-)
+go run /tmp/check_node_svcs.go  # chạy trên master
+```
+
+## Cấu hình client (Windows/Linux)
+
+- **Default gateway**: `192.168.2.1`
+- **DNS**: `192.168.2.1`
+- Chỉ port 80/443 được forward; ping bị chặn theo thiết kế.
