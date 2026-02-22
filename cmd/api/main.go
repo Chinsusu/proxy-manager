@@ -1019,6 +1019,14 @@ func main() {
 			if body.Username == "" {
 				body.Username = randomWindowsUsername()
 			}
+			if len(body.Username) > 12 {
+				httpx.JSON(w, 400, map[string]string{"error": "username max 12 characters"}); return
+			}
+			// Check ID limit (max 99)
+			existing := st.ListNodeUsers(nodeID)
+			if len(existing) >= 99 {
+				httpx.JSON(w, 400, map[string]string{"error": "max 99 users per node"}); return
+			}
 			u, ok := st.CreateNodeUser(nodeID, body.Username)
 			if !ok {
 				httpx.JSON(w, 500, map[string]string{"error": "create failed"}); return
