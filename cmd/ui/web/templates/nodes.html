@@ -288,7 +288,7 @@
                 ${mappings.map(m => `<tr>
                     <td><code>${m.client?.ip_cidr || '—'}</code></td>
                     <td><small class="text-muted">${m.proxy ? m.proxy.host + ':' + m.proxy.port : '—'}</small></td>
-                    <td>${mappingStateBadge(m.state)}</td>
+                    <td><span id="mapping-state-${m.id}">${mappingStateBadge(m.state)}</span></td>
                     <td>${m.local_redirect_port || '—'}</td>
                     <td><button class="btn btn-xs btn-outline-danger" onclick="NodeManager.deleteMapping('${m.id}','${nodeId}')" title="Delete"><i class="bi bi-trash3"></i></button></td>
                 </tr>`).join('')}
@@ -298,9 +298,10 @@
 
         // Lightweight tick: only update proxy rows (latency/status) without re-rendering mappings
         async function refreshProxiesOnly() {
-            const [nodesRes, proxiesRes] = await Promise.all([
+            const [nodesRes, proxiesRes, mappingsRes] = await Promise.all([
                 fetch(api('/v1/nodes'), { headers: hdr() }),
                 fetch(api('/v1/proxies'), { headers: hdr() }),
+                fetch(api('/v1/mappings'), { headers: hdr() }),
             ]);
             const nodes = nodesRes.ok ? (await nodesRes.json() || []) : [];
             const proxies = proxiesRes.ok ? (await proxiesRes.json() || []) : [];
@@ -323,6 +324,13 @@
                 if (ts) ts.textContent = timeSince(n.last_seen_at);
                 const sb = document.getElementById('status-badge-' + n.id);
                 if (sb) sb.outerHTML = statusBadge(n.status);
+            });
+            // Update mapping state badges only (do NOT re-render mapping panel)
+            mappingsRes && mappingsRes.ok && mappingsRes.json().then(mappings => {
+                (mappings || []).forEach(m => {
+                    const el = document.getElementById('mapping-state-' + m.id);
+                    if (el) el.innerHTML = mappingStateBadge(m.state);
+                });
             });
         }
 
