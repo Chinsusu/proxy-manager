@@ -58,6 +58,7 @@ type Store interface {
 	CreateNode(n types.Node) types.Node
 	GetNode(id string) (types.Node, bool)
 	UpdateNode(n types.Node) (types.Node, bool)
+	UpdateNodeEnabled(id string, enabled bool) bool
 	DeleteNode(id string) bool
 	UpdateNodeStatus(id, status, version string, lastSeen time.Time) bool
 	UpdateNodeDeploy(id, deployStatus, deployLog string) bool
@@ -444,6 +445,7 @@ func (s *memoryStore) ListNodes() []types.Node                                  
 func (s *memoryStore) CreateNode(n types.Node) types.Node                           { return n }
 func (s *memoryStore) GetNode(id string) (types.Node, bool)                         { return types.Node{}, false }
 func (s *memoryStore) UpdateNode(n types.Node) (types.Node, bool)                   { return types.Node{}, false }
+func (s *memoryStore) UpdateNodeEnabled(id string, enabled bool) bool               { return false }
 func (s *memoryStore) DeleteNode(id string) bool                                    { return false }
 func (s *memoryStore) UpdateNodeStatus(id, status, version string, lastSeen time.Time) bool { return false }
 func (s *memoryStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool     { return false }

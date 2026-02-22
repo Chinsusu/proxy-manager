@@ -415,6 +415,7 @@ func (s *fileStore) ListNodes() []types.Node                                    
 func (s *fileStore) CreateNode(n types.Node) types.Node                                { return n }
 func (s *fileStore) GetNode(id string) (types.Node, bool)                              { return types.Node{}, false }
 func (s *fileStore) UpdateNode(n types.Node) (types.Node, bool)                        { return types.Node{}, false }
+func (s *fileStore) UpdateNodeEnabled(id string, enabled bool) bool                    { return false }
 func (s *fileStore) DeleteNode(id string) bool                                         { return false }
 func (s *fileStore) UpdateNodeStatus(id, status, version string, lastSeen time.Time) bool { return false }
 func (s *fileStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool          { return false }

@@ -994,7 +994,19 @@ func main() {
 			return
 		}
 
-		// ---- Node CRUD (admin) ----
+		if sub == "enabled" && r.Method == http.MethodPatch {
+			var body struct{ Enabled bool `json:"enabled"` }
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				httpx.JSON(w, 400, map[string]string{"error": "invalid json"}); return
+			}
+			if !st.UpdateNodeEnabled(nodeID, body.Enabled) {
+				httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+			}
+			n, _ := st.GetNode(nodeID)
+			httpx.JSON(w, 200, n)
+			return
+		}
+
 		switch r.Method {
 		case http.MethodGet:
 			node, ok := st.GetNode(nodeID)

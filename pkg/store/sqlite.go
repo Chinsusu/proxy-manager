@@ -142,6 +142,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE proxies ADD COLUMN isp TEXT`,
 		`ALTER TABLE nodes ADD COLUMN email_id TEXT`,
 		`ALTER TABLE nodes ADD COLUMN lan_subnet TEXT`,
+		`ALTER TABLE nodes ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
 	} {
 		_, _ = s.db.Exec(alter) // intentionally ignore error (column may already exist)
 	}
@@ -612,7 +613,7 @@ func (s *sqliteStore) GetIncomeReport() types.IncomeReport {
 // ---------- Nodes ----------
 
 func (s *sqliteStore) ListNodes() []types.Node {
-	rows, err := s.db.Query(`SELECT id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,email_id,lan_subnet,created_at FROM nodes ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,name,enabled,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,email_id,lan_subnet,created_at FROM nodes ORDER BY created_at DESC`)
 	if err != nil { return nil }
 	defer rows.Close()
 	var out []types.Node
@@ -628,17 +629,18 @@ func (s *sqliteStore) CreateNode(n types.Node) types.Node {
 	if n.SSHUser == "" { n.SSHUser = "root" }
 	if n.Status == "" { n.Status = "offline" }
 	if n.DeployStatus == "" { n.DeployStatus = "pending" }
+	n.Enabled = true // default enabled
 	n.CreatedAt = time.Now()
 	_, _ = s.db.Exec(
-		`INSERT INTO nodes(id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,deploy_status,lan_subnet,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		n.ID, n.Name, n.PublicKey, n.SSHHost, n.SSHPort, n.SSHUser, n.SSHPassword, n.SSHKey,
+		`INSERT INTO nodes(id,name,enabled,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,deploy_status,lan_subnet,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		n.ID, n.Name, n.Enabled, n.PublicKey, n.SSHHost, n.SSHPort, n.SSHUser, n.SSHPassword, n.SSHKey,
 		n.Status, n.Version, n.DeployStatus, n.LanSubnet, n.CreatedAt.UTC().Format(time.RFC3339Nano),
 	)
 	return n
 }
 
 func (s *sqliteStore) GetNode(id string) (types.Node, bool) {
-	rows, err := s.db.Query(`SELECT id,name,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,email_id,lan_subnet,created_at FROM nodes WHERE id=?`, id)
+	rows, err := s.db.Query(`SELECT id,name,enabled,public_key,ssh_host,ssh_port,ssh_user,ssh_password,ssh_key,status,version,last_seen_at,deploy_status,deploy_log,deployed_at,email_id,lan_subnet,created_at FROM nodes WHERE id=?`, id)
 	if err != nil { return types.Node{}, false }
 	defer rows.Close()
 	if !rows.Next() { return types.Node{}, false }
@@ -655,6 +657,13 @@ func (s *sqliteStore) UpdateNode(n types.Node) (types.Node, bool) {
 	if nn == 0 { return types.Node{}, false }
 	updated, _ := s.GetNode(n.ID)
 	return updated, true
+}
+
+func (s *sqliteStore) UpdateNodeEnabled(id string, enabled bool) bool {
+	res, err := s.db.Exec(`UPDATE nodes SET enabled=? WHERE id=?`, enabled, id)
+	if err != nil { return false }
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 func (s *sqliteStore) DeleteNode(id string) bool {
@@ -740,7 +749,7 @@ func scanNode(rows *sql.Rows) types.Node {
 	var pubKey, sshPass, sshKey, version, lastSeenAt, deployLog, deployedAt, emailID, lanSubnet sql.NullString
 	var createdAt string
 	_ = rows.Scan(
-		&n.ID, &n.Name, &pubKey, &n.SSHHost, &n.SSHPort, &n.SSHUser,
+		&n.ID, &n.Name, &n.Enabled, &pubKey, &n.SSHHost, &n.SSHPort, &n.SSHUser,
 		&sshPass, &sshKey, &n.Status, &version,
 		&lastSeenAt, &n.DeployStatus, &deployLog, &deployedAt, &emailID, &lanSubnet, &createdAt,
 	)

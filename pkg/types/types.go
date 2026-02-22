@@ -110,6 +110,7 @@ type IncomeReport struct {
 type Node struct {
 	ID           string     `json:"id"`
 	Name         string     `json:"name"`
+	Enabled      bool       `json:"enabled"`
 	PublicKey    string     `json:"public_key,omitempty"`
 	SSHHost      string     `json:"ssh_host"`
 	SSHPort      int        `json:"ssh_port"`

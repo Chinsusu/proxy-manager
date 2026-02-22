@@ -403,6 +403,9 @@
                             <small class="text-muted" id="lastseen-${n.id}">${timeSince(n.last_seen_at)}</small>
                             <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')"><i class="bi bi-cloud-upload"></i></button>
                             <button class="btn btn-xs btn-outline-info"    title="Log"    onclick="NodeManager.showDeployLog('${n.id}','${n.name}')"><i class="bi bi-journal-text"></i></button>
+                            <button id="toggle-btn-${n.id}" class="btn btn-xs ${n.enabled !== false ? 'btn-success' : 'btn-outline-secondary'}" title="${n.enabled !== false ? 'Enabled — click to disable' : 'Disabled — click to enable'}" onclick="NodeManager.toggleEnabled('${n.id}', ${n.enabled !== false})">
+                                <i class="bi ${n.enabled !== false ? 'bi-toggle-on' : 'bi-toggle-off'}"></i>
+                            </button>
                             <button class="btn btn-xs btn-outline-danger"  title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')"><i class="bi bi-trash"></i></button>
                         </div>
                     </div>
@@ -590,6 +593,24 @@
             else alert('Unassign failed');
         }
 
+        async function toggleEnabled(id, currentEnabled) {
+            const newEnabled = !currentEnabled;
+            const res = await fetch(api(`/v1/nodes/${id}/enabled`), {
+                method: 'PATCH',
+                headers: { ...hdr(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: newEnabled }),
+            });
+            if (!res.ok) { alert('Toggle failed'); return; }
+            // Update button inline without full refresh
+            const btn = document.getElementById(`toggle-btn-${id}`);
+            if (btn) {
+                btn.className = `btn btn-xs ${newEnabled ? 'btn-success' : 'btn-outline-secondary'}`;
+                btn.title = newEnabled ? 'Enabled — click to disable' : 'Disabled — click to enable';
+                btn.onclick = () => NodeManager.toggleEnabled(id, newEnabled);
+                btn.querySelector('i').className = `bi ${newEnabled ? 'bi-toggle-on' : 'bi-toggle-off'}`;
+            }
+        }
+
         async function deleteNode(id, name) {
             if (!confirm(`Delete node "${name}"?`)) return;
             const res = await fetch(api(`/v1/nodes/${id}`), { method: 'DELETE', headers: hdr() });
@@ -601,7 +622,7 @@
         refresh();
         setInterval(refreshProxiesOnly, 15000);
 
-        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping, unassignProxy, assignEmail };
+        return { refresh, deploy, showDeployLog, refreshDeployLog, toggleEnabled, deleteNode, createMapping, deleteMapping, unassignProxy, assignEmail };
     })();
 </script>
 {{end}}
