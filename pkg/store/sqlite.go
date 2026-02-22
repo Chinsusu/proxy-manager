@@ -479,10 +479,15 @@ func (s *sqliteStore) ListPayPals() []types.PayPal {
 	var out []types.PayPal
 	for rows.Next() {
 		var p types.PayPal
-		var ownerName, note sql.NullString
-		_ = rows.Scan(&p.ID, &p.Email, &ownerName, &p.Verified, &p.Balance, &p.Currency, &p.Status, &note, &p.CreatedAt)
+		var ownerName, note, createdAt sql.NullString
+		_ = rows.Scan(&p.ID, &p.Email, &ownerName, &p.Verified, &p.Balance, &p.Currency, &p.Status, &note, &createdAt)
 		if ownerName.Valid { p.OwnerName = ownerName.String }
 		if note.Valid { p.Note = note.String }
+		if createdAt.Valid && createdAt.String != "" {
+			if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {
+				p.CreatedAt = t
+			}
+		}
 		out = append(out, p)
 	}
 	return out
