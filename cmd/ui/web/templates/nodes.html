@@ -501,20 +501,20 @@
                             </div>
                         </div>
                         <!-- Users panel -->
-                        <div class="col" style="max-width:185px;min-width:150px">
+                        <div class="col" style="max-width:170px">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-people me-1"></i>Users
                                     <span class="badge bg-label-secondary ms-1" id="user-count-${n.id}">—</span>
                                 </span>
                             </div>
-                            <div id="users-panel-${n.id}" style="min-height:32px">
+                            <div id="users-panel-${n.id}">
                                 <div class="spinner-border spinner-border-sm text-muted ms-3 mt-1" role="status"></div>
                             </div>
                             <div class="px-2 pb-2 pt-1 border-top bg-light bg-opacity-50">
                                 <form class="d-flex gap-1 align-items-center" onsubmit="event.preventDefault(); NodeManager.addUser('${n.id}', this)">
                                     <input name="username" type="text" class="form-control form-control-sm"
-                                        maxlength="12" placeholder="username…" autocomplete="off" style="font-size:.75rem">
-                                    <button type="submit" class="btn btn-sm btn-primary px-2">
+                                        maxlength="12" placeholder="user…" autocomplete="off" style="font-size:.75rem;min-width:0">
+                                    <button type="submit" class="btn btn-sm btn-primary flex-shrink-0 px-2">
                                         <i class="bi bi-plus-lg"></i>
                                     </button>
                                 </form>
@@ -700,7 +700,7 @@
         // ---------- Node Users ----------
         function renderUsersTable(users, nodeId) {
             const header = `<table class="table table-sm node-detail-table mb-0">
-                <thead><tr><th>ID</th><th>Username</th><th>Actions</th></tr></thead>
+                <thead><tr><th>ID</th><th>User</th><th></th></tr></thead>
                 <tbody>`;
             if (!users || !users.length) return header + `<tr><td colspan="3" class="text-muted small"><i class="bi bi-people opacity-50 me-1"></i>No users.</td></tr></tbody></table>`;
             return header + users.map(u => `<tr>
