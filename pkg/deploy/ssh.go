@@ -133,16 +133,17 @@ func buildLocalNodeBin() (string, error) {
 	return tmp.Name(), nil
 }
 
-// transferBinary sends a local file to remotePath on the SSH client via stdin pipe.
+// transferBinary sends a local file to remotePath using SCP sink protocol.
 func transferBinary(client *gossh.Client, localPath, remotePath string) error {
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		return fmt.Errorf("read local binary: %w", err)
 	}
-	// Ensure parent directory exists
+
+	// Ensure parent directory exists first
 	mkdirSess, err := client.NewSession()
 	if err != nil {
-		return err
+		return fmt.Errorf("mkdir session: %w", err)
 	}
 	dir := "/"
 	for i := len(remotePath) - 1; i >= 0; i-- {
@@ -154,13 +155,88 @@ func transferBinary(client *gossh.Client, localPath, remotePath string) error {
 	_ = mkdirSess.Run("mkdir -p " + dir)
 	mkdirSess.Close()
 
+	// Use SCP sink mode: scp -t <remotePath>
 	sess, err := client.NewSession()
 	if err != nil {
-		return err
+		return fmt.Errorf("scp session: %w", err)
 	}
 	defer sess.Close()
-	sess.Stdin = bytes.NewReader(data)
-	return sess.Run(fmt.Sprintf("cat > %s && chmod +x %s", remotePath, remotePath))
+
+	// Capture stderr for better error messages
+	var stderr bytes.Buffer
+	sess.Stderr = &stderr
+
+	// Get stdin pipe to write SCP commands
+	wc, err := sess.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("stdin pipe: %w", err)
+	}
+
+	// Get stdout to read SCP acks
+	rc, err := sess.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	// Start the scp receiver on the remote end
+	filename := remotePath
+	for i := len(remotePath) - 1; i >= 0; i-- {
+		if remotePath[i] == '/' {
+			filename = remotePath[i+1:]
+			break
+		}
+	}
+	if err := sess.Start("scp -t " + remotePath); err != nil {
+		return fmt.Errorf("scp start: %w", err)
+	}
+
+	// readAck reads one SCP acknowledgement byte (0 = ok, 1/2 = error)
+	readAck := func() error {
+		buf := make([]byte, 1)
+		if _, err := rc.Read(buf); err != nil && err != io.EOF {
+			return err
+		}
+		if buf[0] != 0 {
+			// Read error message
+			msg := make([]byte, 256)
+			n, _ := rc.Read(msg)
+			return fmt.Errorf("scp remote error: %s", strings.TrimSpace(string(msg[:n])))
+		}
+		return nil
+	}
+
+	// Wait for initial ack
+	if err := readAck(); err != nil {
+		return fmt.Errorf("initial ack: %w", err)
+	}
+
+	// Send file header: C0755 <size> <filename>\n
+	header := fmt.Sprintf("C0755 %d %s\n", len(data), filename)
+	if _, err := fmt.Fprint(wc, header); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+	if err := readAck(); err != nil {
+		return fmt.Errorf("header ack: %w", err)
+	}
+
+	// Send file content
+	if _, err := wc.Write(data); err != nil {
+		return fmt.Errorf("write data: %w", err)
+	}
+
+	// Send terminator null byte
+	if _, err := fmt.Fprint(wc, "\x00"); err != nil {
+		return fmt.Errorf("write terminator: %w", err)
+	}
+	if err := readAck(); err != nil {
+		return fmt.Errorf("data ack: %w", err)
+	}
+
+	wc.Close()
+	if err := sess.Wait(); err != nil {
+		return fmt.Errorf("scp wait: %w (stderr: %s)", err, stderr.String())
+	}
+	return nil
 }
 
 // DeployNode SSHes into node and runs the install script.
