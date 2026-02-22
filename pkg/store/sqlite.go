@@ -426,13 +426,18 @@ func (s *sqliteStore) ListEmails() []types.Email {
 	var out []types.Email
 	for rows.Next() {
 		var e types.Email
-		var provider, password, recovery, paypalID, note sql.NullString
-		_ = rows.Scan(&e.ID, &e.Address, &provider, &password, &recovery, &paypalID, &note, &e.Status, &e.CreatedAt)
+		var provider, password, recovery, paypalID, note, createdAt sql.NullString
+		_ = rows.Scan(&e.ID, &e.Address, &provider, &password, &recovery, &paypalID, &note, &e.Status, &createdAt)
 		if provider.Valid { e.Provider = provider.String }
 		if password.Valid { e.Password = password.String }
 		if recovery.Valid { e.RecoveryEmail = recovery.String }
 		if paypalID.Valid && paypalID.String != "" { e.PayPalID = &paypalID.String }
 		if note.Valid { e.Note = note.String }
+		if createdAt.Valid && createdAt.String != "" {
+			if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {
+				e.CreatedAt = t
+			}
+		}
 		out = append(out, e)
 	}
 	return out

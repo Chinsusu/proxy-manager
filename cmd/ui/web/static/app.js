@@ -928,7 +928,7 @@ class EmailManager {
     tbody.innerHTML = this.data.map(e => `
       <tr>
         <td><span class="fw-medium">${e.address}</span></td>
-        <td><span class="badge bg-label-info">${e.provider || 'other'}</span></td>
+        <td><span class="badge bg-label-primary">${e.provider || 'other'}</span></td>
         <td>${statusBadge(e.status || 'active')}</td>
         <td>${e.paypal_id ? '<span class="badge bg-label-warning">Linked</span>' : '<span class="text-muted">—</span>'}</td>
         <td class="text-muted small">${e.note || '—'}</td>
