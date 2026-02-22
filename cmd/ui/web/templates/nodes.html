@@ -501,7 +501,7 @@
                             </div>
                         </div>
                         <!-- Users panel -->
-                        <div class="col" style="max-width:220px;min-width:160px">
+                        <div class="col" style="max-width:185px;min-width:150px">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-people me-1"></i>Users
                                     <span class="badge bg-label-secondary ms-1" id="user-count-${n.id}">—</span>
@@ -704,8 +704,8 @@
                 <tbody>`;
             if (!users || !users.length) return header + `<tr><td colspan="3" class="text-muted small"><i class="bi bi-people opacity-50 me-1"></i>No users.</td></tr></tbody></table>`;
             return header + users.map(u => `<tr>
-                    <td><span class="badge bg-label-secondary">${u.id}</span></td>
-                    <td class="font-monospace">${u.username}</td>
+                    <td><small class="text-muted fw-semibold">${u.id}</small></td>
+                    <td><small>${u.username}</small></td>
                     <td><button class="btn btn-xs btn-outline-danger" onclick="NodeManager.deleteUser('${nodeId}',${u.id})" title="Delete"><i class="bi bi-trash3"></i></button></td>
                 </tr>`).join('') + `</tbody></table>`;
         }
