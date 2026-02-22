@@ -309,13 +309,10 @@
         }
 
         function renderMappingsTable(mappings, nodeId, nodeProxies) {
-            // Build proxy options — exclude proxies already mapped
-            const usedProxyIds = new Set(mappings.map(m => m.proxy?.id).filter(Boolean));
-            const availableProxies = nodeProxies.filter(p => !usedProxyIds.has(p.id));
-            const proxyOpts = availableProxies.map(p =>
+            const proxyOpts = nodeProxies.map(p =>
                 `<option value="${p.id}">${p.host}:${p.port} (${p.type})</option>`
             ).join('');
-            const canCreate = availableProxies.length > 0;
+            const canCreate = nodeProxies.length > 0;
 
             const form = `<div class="px-2 pb-2 pt-1 border-top bg-light bg-opacity-50 mt-auto">
               <form class="d-flex gap-1 align-items-center" onsubmit="event.preventDefault(); NodeManager.createMapping('${nodeId}', this)">
