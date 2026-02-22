@@ -233,7 +233,10 @@ class PGWManager {
         + '<th data-k="status" class="sortable">Status' + (key === 'status' ? arrow : '') + '</th>'
         + '<th data-k="latency" class="sortable">Latency' + (key === 'latency' ? arrow : '') + '</th>'
         + '<th data-k="exit" class="sortable">Exit IP' + (key === 'exit' ? arrow : '') + '</th>'
+        + '<th>Region</th>'
+        + '<th>ISP</th>'
         + '<th data-k="last" class="sortable">Last Check' + (key === 'last' ? arrow : '') + '</th>'
+        + '<th>Node VPS</th>'
         + '<th>Actions</th>'
         + '</tr>';
       thead.querySelectorAll('th.sortable').forEach((th) => {
@@ -249,7 +252,7 @@ class PGWManager {
     tbody.innerHTML = '';
 
     if (sorted.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center">No proxies configured</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="11" class="text-center">No proxies configured</td></tr>';
       return;
     }
 
@@ -306,6 +309,11 @@ class PGWManager {
     const nodeSelect = `<select class="form-select form-select-sm" style="min-width:130px"
       onchange="pgw.assignProxyNode('${proxy.id}', this.value)">${nodeOpts}</select>`;
 
+    const truncISP = isp => {
+      if (!isp) return '—';
+      return isp.replace(/\s*(Telecommunications?|Communications?|Technologies?|Technology|Corp(?:oration)?|Ltd|Limited|Inc(?:orporated)?|S\.A\.|LLC|Co\.)\s*$/gi, '').trim() || isp;
+    };
+
     tr.innerHTML = `
       <td><code>${proxy.id.slice(0, 8)}</code></td>
       <td>${proxy.type}</td>
@@ -313,6 +321,8 @@ class PGWManager {
       <td>${statusBadge}</td>
       <td>${latencyBadge}</td>
       <td>${proxy.exit_ip || '—'}</td>
+      <td><small class="text-muted">${proxy.region || '—'}</small></td>
+      <td><small class="text-muted">${truncISP(proxy.isp)}</small></td>
       <td>${lastChecked}</td>
       <td>${nodeSelect}</td>
       <td>
