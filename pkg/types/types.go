@@ -122,6 +122,7 @@ type Node struct {
 	DeployStatus string     `json:"deploy_status"` // "pending" | "deploying" | "deployed" | "failed"
 	DeployLog    string     `json:"deploy_log,omitempty"`
 	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	EmailID      *string    `json:"email_id,omitempty"` // assigned email account
 	CreatedAt    time.Time  `json:"created_at"`
 }
 

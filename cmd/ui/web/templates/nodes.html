@@ -307,6 +307,20 @@
             const proxies = proxiesRes.ok ? (await proxiesRes.json() || []) : [];
             const mappings = mappingsRes.ok ? (await mappingsRes.json() || []) : [];
 
+            // Fetch emails and paypals for assignment display
+            let emails = [], paypals = [];
+            try {
+                const [eRes, pRes] = await Promise.all([
+                    fetch('/api/v1/emails'),
+                    fetch('/api/v1/paypals'),
+                ]);
+                emails = eRes.ok ? (await eRes.json() || []) : [];
+                paypals = pRes.ok ? (await pRes.json() || []) : [];
+            } catch (_) { }
+            const emailMap = Object.fromEntries(emails.map(e => [e.id, e]));
+            const paypalMap = Object.fromEntries(paypals.map(p => [p.id, p]));
+            const emailOpts = emails.map(e => `<option value="${e.id}">${e.address}</option>`).join('');
+
             document.getElementById('stat-online').textContent = nodes.filter(n => n.status === 'online').length;
             document.getElementById('stat-offline').textContent = nodes.filter(n => n.status === 'offline').length;
             document.getElementById('stat-deploying').textContent = nodes.filter(n => n.status === 'deploying').length;
@@ -323,19 +337,38 @@
                 const nodeMappings = mappings.filter(m => m.proxy && nodeProxies.some(p => p.id === m.proxy.id));
 
                 return `<div class="card mb-3 node-card status-${n.status}">
-                <div class="card-header d-flex align-items-center justify-content-between py-2">
-                    <div class="d-flex align-items-center gap-3">
-                        <strong>${n.name}</strong>
-                        <code class="text-muted" style="font-size:.8rem">${n.ssh_host || '—'}:${n.ssh_port || 22}</code>
-                        ${statusBadge(n.status)}
-                        ${deployBadge(n.deploy_status)}
-                        <small class="text-muted">${n.version ? 'v' + n.version : ''}</small>
+                <div class="card-header py-2">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                            <strong>${n.name}</strong>
+                            <code class="text-muted" style="font-size:.8rem">${n.ssh_host || '—'}:${n.ssh_port || 22}</code>
+                            ${statusBadge(n.status)}
+                            ${deployBadge(n.deploy_status)}
+                            <small class="text-muted">${n.version ? 'v' + n.version : ''}</small>
+                            ${(() => {
+                        if (!n.email_id) return '<span class="text-muted small"><i class="bi bi-envelope me-1 opacity-50"></i>No email</span>';
+                        const em = emailMap[n.email_id];
+                        if (!em) return '';
+                        const pp = em.paypal_id ? paypalMap[em.paypal_id] : null;
+                        return '<span class="small"><i class="bi bi-envelope-fill me-1 text-primary"></i><span class="fw-medium">' + em.address + '</span>' + (pp ? ' <i class="bi bi-paypal ms-2 me-1 text-info"></i><span class="text-muted">' + pp.email + '</span>' : '') + '</span>';
+                    })()}
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">${timeSince(n.last_seen_at)}</small>
+                            <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')"><i class="bi bi-cloud-upload"></i></button>
+                            <button class="btn btn-xs btn-outline-info"    title="Log"    onclick="NodeManager.showDeployLog('${n.id}','${n.name}')"><i class="bi bi-journal-text"></i></button>
+                            <button class="btn btn-xs btn-outline-danger"  title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')"><i class="bi bi-trash"></i></button>
+                        </div>
                     </div>
-                    <div class="d-flex align-items-center gap-2">
-                        <small class="text-muted">${timeSince(n.last_seen_at)}</small>
-                        <button class="btn btn-xs btn-outline-primary" title="Deploy" onclick="NodeManager.deploy('${n.id}','${n.name}')"><i class="bi bi-cloud-upload"></i></button>
-                        <button class="btn btn-xs btn-outline-info"    title="Log"    onclick="NodeManager.showDeployLog('${n.id}','${n.name}')"><i class="bi bi-journal-text"></i></button>
-                        <button class="btn btn-xs btn-outline-danger"  title="Delete" onclick="NodeManager.deleteNode('${n.id}','${n.name}')"><i class="bi bi-trash"></i></button>
+                    <div class="d-flex align-items-center gap-2 mt-2 pt-2 border-top">
+                        <i class="bi bi-envelope text-muted" style="font-size:.8rem"></i>
+                        <select id="email-sel-${n.id}" class="form-select form-select-sm" style="max-width:280px">
+                            <option value="">— No email —</option>
+                            ${emails.map(e => '<option value="' + e.id + '"' + (n.email_id === e.id ? ' selected' : '') + '>' + e.address + '</option>').join('')}
+                        </select>
+                        <button class="btn btn-xs btn-outline-primary" onclick="assignEmail('${n.id}')">
+                            <i class="bi bi-check2"></i> Assign
+                        </button>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -366,6 +399,24 @@
                 </div>
             </div>`;
             }).join('');
+        }
+
+        async function assignEmail(nodeId) {
+            const sel = document.getElementById('email-sel-' + nodeId);
+            const emailId = (sel && sel.value) ? sel.value : null;
+            try {
+                const cur = await fetch(api('/v1/nodes/' + nodeId), { headers: hdr() });
+                if (!cur.ok) throw new Error('Cannot fetch node');
+                const node = await cur.json();
+                node.email_id = emailId;
+                const res = await fetch(api('/v1/nodes/' + nodeId), {
+                    method: 'PUT',
+                    headers: { ...hdr(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify(node),
+                });
+                if (!res.ok) throw new Error(await res.text());
+                await refresh();
+            } catch (e) { alert('Error: ' + e.message); }
         }
 
         async function addNode() {
