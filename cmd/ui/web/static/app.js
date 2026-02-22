@@ -816,6 +816,9 @@ class PGWManager {
     toast.addEventListener('hidden.bs.toast', () => toast.remove());
   }
 
+  // alias used by sub-managers (EmailManager, PayPalManager, IncomeManager)
+  showToast(message, type = 'info') { this.showAlert(message, type); }
+
   showLoading(show) {
     const loadingEl = document.getElementById('loading-indicator');
     if (loadingEl) {
@@ -1142,7 +1145,7 @@ class IncomeManager {
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   const path = window.location.pathname;
-  const pgw = window.pgw || { showToast: (m, t) => console.log(t, m) };
+  const pgw = window.pgw || { showToast: (m, t) => console.log(t, m), showAlert: (m, t) => console.log(t, m) };
 
   if (path === '/emails') {
     window.emailMgr = new EmailManager(pgw);
