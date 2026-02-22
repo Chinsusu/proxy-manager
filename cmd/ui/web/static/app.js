@@ -864,7 +864,8 @@ class EmailManager {
 
   async init() {
     document.getElementById('form-email')?.addEventListener('submit', e => { e.preventDefault(); this.addEmail(); });
-    await Promise.all([this.loadPayPals(), this.load()]);
+    await this.loadPayPals();
+    await this.load();
   }
 
   async loadPayPals() {
@@ -941,7 +942,7 @@ class EmailManager {
         <td><span class="fw-medium">${e.address}</span></td>
         <td><span class="badge bg-label-primary">${e.provider || 'other'}</span></td>
         <td>${statusBadge(e.status || 'active')}</td>
-        <td class="text-muted small">${linkedPayPal !== '—' ? `<span class="badge bg-label-warning">${linkedPayPal}</span>` : '—'}</td>
+        <td class="text-muted small">${linkedPayPal !== '—' ? `<span class="fw-medium text-body">${linkedPayPal}</span>` : '—'}</td>
         <td class="text-muted small">${e.note || '—'}</td>
         <td class="text-muted small">${this.fmtDate(e.created_at)}</td>
         <td>
