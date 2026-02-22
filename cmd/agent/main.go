@@ -60,8 +60,17 @@ func loadCfg() cfgAgent {
 	}
 }
 
+// enableIPForward ensures net.ipv4.ip_forward=1 so the node can act as a router/NAT gateway.
+func enableIPForward() {
+	_ = os.WriteFile("/proc/sys/net/ipv4/ip_forward", []byte("1\n"), 0o644)
+	// Also persist via sysctl.d
+	_ = os.MkdirAll("/etc/sysctl.d", 0o755)
+	_ = os.WriteFile("/etc/sysctl.d/99-pgw.conf", []byte("net.ipv4.ip_forward = 1\n"), 0o644)
+}
+
 func main() {
 	cfg := loadCfg()
+	enableIPForward()
 
 	http.HandleFunc("/agent/reconcile", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

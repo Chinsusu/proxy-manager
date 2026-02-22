@@ -366,9 +366,19 @@ func DeployNode(ctx context.Context, node types.Node, secret string, logChan cha
 	}
 
 	// Step 1: Install dependencies
-	log("[deploy] Step 1/5: apt update + install curl systemd ...")
+	log("[deploy] Step 1/5: apt update + install curl systemd dnsmasq nftables ...")
 	apt1 := "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 " +
-		"apt-get update -qq && apt-get install -y -qq curl systemd"
+		"apt-get update -qq && apt-get install -y -qq curl systemd nftables dnsmasq && " +
+		// Enable ip_forward immediately and persist across reboots
+		"echo 'net.ipv4.ip_forward = 1' > /etc/sysctl.d/99-pgw.conf && sysctl -p /etc/sysctl.d/99-pgw.conf && " +
+		// Configure dnsmasq: listen on ens19 (LAN), forward to upstream DNS
+		"mkdir -p /etc/dnsmasq.d && " +
+		"echo 'interface=ens19' > /etc/dnsmasq.d/pgw.conf && " +
+		"echo 'bind-interfaces' >> /etc/dnsmasq.d/pgw.conf && " +
+		"echo 'no-resolv' >> /etc/dnsmasq.d/pgw.conf && " +
+		"echo 'server=8.8.8.8' >> /etc/dnsmasq.d/pgw.conf && " +
+		"echo 'server=1.1.1.1' >> /etc/dnsmasq.d/pgw.conf && " +
+		"systemctl enable dnsmasq && systemctl restart dnsmasq || true"
 	if err := run(apt1); err != nil {
 		return "", err
 	}
