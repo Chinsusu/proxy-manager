@@ -823,13 +823,13 @@ func main() {
 		if nodeID == "" || sigHex == "" || tsStr == "" {
 			return "", false
 		}
-		// Check timestamp freshness (±60s)
+		// Check timestamp freshness (±300s — accounts for NTP drift on VPS)
 		ts, err := strconv.ParseInt(tsStr, 10, 64)
 		if err != nil {
 			return "", false
 		}
 		diff := time.Now().Unix() - ts
-		if diff < -60 || diff > 60 {
+		if diff < -300 || diff > 300 {
 			return "", false
 		}
 		// Lookup node pubkey
