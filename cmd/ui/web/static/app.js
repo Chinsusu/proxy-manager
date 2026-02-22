@@ -989,11 +989,18 @@ class EmailManager {
 // PayPal Management
 // ============================================================
 class PayPalManager {
-  constructor(pgw) { this.pgw = pgw; this.data = []; }
+  constructor(pgw) { this.pgw = pgw; this.data = []; this.emails = []; }
 
   async init() {
     document.getElementById('form-paypal')?.addEventListener('submit', e => { e.preventDefault(); this.addPayPal(); });
-    await this.load();
+    await Promise.all([this.loadEmails(), this.load()]);
+  }
+
+  async loadEmails() {
+    try {
+      const res = await fetch('/api/v1/emails');
+      this.emails = res.ok ? (await res.json() || []) : [];
+    } catch (_) { this.emails = []; }
   }
 
   async load() {
@@ -1037,19 +1044,28 @@ class PayPalManager {
     } catch (e) { this.pgw.showToast('Error', 'danger'); }
   }
 
+  fmtDate(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    if (isNaN(d) || d.getFullYear() < 1970) return '—';
+    return d.toLocaleDateString('vi-VN');
+  }
+
   render() {
     const tbody = document.getElementById('tbody-paypals');
     const badge = document.getElementById('paypal-count');
     if (!tbody) return;
     if (badge) badge.textContent = this.data.length + ' accounts';
     if (!this.data.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No PayPal accounts yet</td></tr>'; return;
+      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-4">No PayPal accounts yet</td></tr>'; return;
     }
     const statusBadge = s => {
       const m = { active: 'success', limited: 'warning', suspended: 'danger' };
       return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
     };
-    tbody.innerHTML = this.data.map(p => `
+    tbody.innerHTML = this.data.map(p => {
+      const linkedEmail = p.linked_email_id ? (this.emails.find(e => e.id === p.linked_email_id)?.address || p.linked_email_id) : '—';
+      return `
       <tr>
         <td><span class="fw-medium">${p.email}</span></td>
         <td>${p.owner_name || '<span class="text-muted">—</span>'}</td>
@@ -1057,13 +1073,65 @@ class PayPalManager {
         <td>${statusBadge(p.status || 'active')}</td>
         <td>${p.verified ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle text-muted"></i>'}</td>
         <td class="text-muted small">${p.note || '—'}</td>
-        <td class="text-muted small">${new Date(p.created_at).toLocaleDateString('vi-VN')}</td>
+        <td class="text-muted small">${linkedEmail}</td>
+        <td class="text-muted small">${this.fmtDate(p.created_at)}</td>
         <td>
-          <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.paypalMgr.deletePayPal('${p.id}')" title="Delete">
-            <i class="bi bi-trash"></i>
-          </button>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-icon btn-label-warning" onclick="window.paypalMgr.editPayPal('${p.id}')" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-icon btn-label-danger" onclick="window.paypalMgr.deletePayPal('${p.id}')" title="Delete">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
+  }
+
+  editPayPal(id) {
+    const p = this.data.find(x => x.id === id);
+    if (!p) return;
+    document.getElementById('edit-paypal-id').value = p.id;
+    document.getElementById('edit-paypal-email').value = p.email || '';
+    document.getElementById('edit-paypal-owner').value = p.owner_name || '';
+    document.getElementById('edit-paypal-balance').value = p.balance || 0;
+    document.getElementById('edit-paypal-currency').value = p.currency || 'USD';
+    document.getElementById('edit-paypal-status').value = p.status || 'active';
+    document.getElementById('edit-paypal-verified').checked = !!p.verified;
+    document.getElementById('edit-paypal-note').value = p.note || '';
+    // populate email dropdown
+    const sel = document.getElementById('edit-paypal-linked-email');
+    sel.innerHTML = '<option value="">— None —</option>' +
+      this.emails.map(e => `<option value="${e.id}" ${p.linked_email_id === e.id ? 'selected' : ''}>${e.address}</option>`).join('');
+    const modal = new bootstrap.Modal(document.getElementById('editPayPalModal'));
+    modal.show();
+  }
+
+  async savePayPal() {
+    const id = document.getElementById('edit-paypal-id').value;
+    const linked_email_id = document.getElementById('edit-paypal-linked-email').value || null;
+    const body = {
+      email: document.getElementById('edit-paypal-email').value.trim(),
+      owner_name: document.getElementById('edit-paypal-owner').value.trim(),
+      balance: parseFloat(document.getElementById('edit-paypal-balance').value) || 0,
+      currency: document.getElementById('edit-paypal-currency').value,
+      status: document.getElementById('edit-paypal-status').value,
+      verified: document.getElementById('edit-paypal-verified').checked,
+      note: document.getElementById('edit-paypal-note').value.trim(),
+      linked_email_id,
+    };
+    try {
+      const res = await fetch('/api/v1/paypals/' + id, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      bootstrap.Modal.getInstance(document.getElementById('editPayPalModal'))?.hide();
+      this.pgw.showToast('PayPal updated', 'success');
+      await this.load();
+    } catch (err) { this.pgw.showToast('Error: ' + err.message, 'danger'); }
   }
 }
 

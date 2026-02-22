@@ -97,9 +97,12 @@ func (s *sqliteStore) migrate() error {
 			currency TEXT NOT NULL DEFAULT 'USD',
 			status TEXT NOT NULL DEFAULT 'active',
 			note TEXT,
+			linked_email_id TEXT,
 			created_at TEXT NOT NULL
 		)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_paypals_email ON paypals(email)`,
+		// Migrate: add linked_email_id if not exists
+		`ALTER TABLE paypals ADD COLUMN linked_email_id TEXT`,
 		`CREATE TABLE IF NOT EXISTS income (
 			id TEXT PRIMARY KEY,
 			amount REAL NOT NULL,
@@ -473,16 +476,17 @@ func (s *sqliteStore) DeleteEmail(id string) bool {
 // ---------- PayPals ----------
 
 func (s *sqliteStore) ListPayPals() []types.PayPal {
-	rows, err := s.db.Query(`SELECT id,email,owner_name,verified,balance,currency,status,note,created_at FROM paypals ORDER BY created_at DESC`)
+	rows, err := s.db.Query(`SELECT id,email,owner_name,verified,balance,currency,status,note,linked_email_id,created_at FROM paypals ORDER BY created_at DESC`)
 	if err != nil { return nil }
 	defer rows.Close()
 	var out []types.PayPal
 	for rows.Next() {
 		var p types.PayPal
-		var ownerName, note, createdAt sql.NullString
-		_ = rows.Scan(&p.ID, &p.Email, &ownerName, &p.Verified, &p.Balance, &p.Currency, &p.Status, &note, &createdAt)
+		var ownerName, note, linkedEmailID, createdAt sql.NullString
+		_ = rows.Scan(&p.ID, &p.Email, &ownerName, &p.Verified, &p.Balance, &p.Currency, &p.Status, &note, &linkedEmailID, &createdAt)
 		if ownerName.Valid { p.OwnerName = ownerName.String }
 		if note.Valid { p.Note = note.String }
+		if linkedEmailID.Valid && linkedEmailID.String != "" { p.LinkedEmailID = &linkedEmailID.String }
 		if createdAt.Valid && createdAt.String != "" {
 			if t, err := time.Parse(time.RFC3339Nano, createdAt.String); err == nil {
 				p.CreatedAt = t
@@ -507,8 +511,8 @@ func (s *sqliteStore) CreatePayPal(p types.PayPal) types.PayPal {
 
 func (s *sqliteStore) UpdatePayPal(p types.PayPal) (types.PayPal, bool) {
 	res, err := s.db.Exec(
-		`UPDATE paypals SET email=?,owner_name=?,verified=?,balance=?,currency=?,status=?,note=? WHERE id=?`,
-		p.Email, p.OwnerName, p.Verified, p.Balance, p.Currency, p.Status, p.Note, p.ID,
+		`UPDATE paypals SET email=?,owner_name=?,verified=?,balance=?,currency=?,status=?,note=?,linked_email_id=? WHERE id=?`,
+		p.Email, p.OwnerName, p.Verified, p.Balance, p.Currency, p.Status, p.Note, nullStr(p.LinkedEmailID), p.ID,
 	)
 	if err != nil { return types.PayPal{}, false }
 	n, _ := res.RowsAffected()
