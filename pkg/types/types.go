@@ -123,6 +123,7 @@ type Node struct {
 	DeployLog    string     `json:"deploy_log,omitempty"`
 	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
 	EmailID      *string    `json:"email_id,omitempty"` // assigned email account
+	LanSubnet    string     `json:"lan_subnet,omitempty"` // ens19 subnet, e.g. "192.168.2.1/24"
 	CreatedAt    time.Time  `json:"created_at"`
 }
 

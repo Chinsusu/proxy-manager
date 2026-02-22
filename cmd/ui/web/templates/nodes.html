@@ -87,6 +87,14 @@
                                 mới. Sau khi <strong>Deploy</strong> xong, mở <strong>Deploy Log</strong> → copy public
                                 key → cập nhật lại node.</div>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label">LAN Subnet (ens19) <span
+                                    class="badge bg-label-secondary ms-1">optional</span></label>
+                            <input type="text" class="form-control font-monospace" id="nodeLanSubnet"
+                                placeholder="192.168.2.1/24">
+                            <div class="form-text"><i class="bi bi-info-circle me-1 text-primary"></i>Subnet của
+                                interface ens19 trên node (Gateway IP + prefix). Mặc định: 192.168.2.1/24</div>
+                        </div>
 
                     </div>
                 </form>
@@ -466,6 +474,7 @@
                 ssh_password: document.getElementById('nodeSSHPass').value,
                 ssh_key: document.getElementById('nodeSSHKey').value,
                 public_key: document.getElementById('nodePublicKey').value.trim(),
+                lan_subnet: document.getElementById('nodeLanSubnet').value.trim(),
             };
             if (!body.name) { alert('Name is required'); return; }
             const res = await fetch(api('/v1/nodes'), { method: 'POST', headers: hdr(), body: JSON.stringify(body) });

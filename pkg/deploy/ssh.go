@@ -510,7 +510,37 @@ chmod 600 /etc/pgw/pgw.env /etc/pgw-node/pgw-node.env`,
 		return "", err
 	}
 
+	// Step 3b: Configure ens19 LAN interface via netplan
+	lanSubnet := node.LanSubnet
+	if lanSubnet == "" {
+		lanSubnet = "192.168.2.1/24" // default LAN subnet
+	}
+	log(fmt.Sprintf("[deploy] Step 3b/5: Configure LAN interface ens19 with subnet %s ...", lanSubnet))
+	netplanCmd := fmt.Sprintf(`
+# Configure ens19 LAN interface if it exists and has no IP
+if ip link show ens19 > /dev/null 2>&1; then
+  mkdir -p /etc/netplan
+  cat > /etc/netplan/01-pgw-lan.yaml << 'NETEOF'
+network:
+  version: 2
+  ethernets:
+    ens19:
+      dhcp4: false
+      addresses: [%s]
+NETEOF
+  chmod 600 /etc/netplan/01-pgw-lan.yaml
+  netplan apply 2>/dev/null && echo "[deploy] ens19 configured with %s" || echo "[deploy] WARN: netplan apply failed (non-fatal)"
+  ip addr show ens19
+else
+  echo "[deploy] WARN: ens19 interface not found, skipping netplan config"
+fi
+`, lanSubnet, lanSubnet)
+	if err := run(strings.TrimSpace(netplanCmd)); err != nil {
+		log(fmt.Sprintf("[deploy] WARN: netplan config failed: %v (non-fatal)", err))
+	}
+
 	// Step 4: Install systemd units
+
 	log("[deploy] Step 4/5: Installing systemd units ...")
 	unitInstall := `
 for svc in pgw-api pgw-agent pgw-health pgw-node; do
