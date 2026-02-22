@@ -1100,6 +1100,10 @@ func runHealthTick(st store.Store) {
 		if p.Type != "http" && p.Type != "socks5" {
 			continue
 		}
+		// If proxy is assigned to an online node, the node checks it via heartbeat — skip here
+		if p.NodeID != nil && *p.NodeID != "" && onlineNodes[*p.NodeID] {
+			continue
+		}
 		wg.Add(1)
 		sem <- struct{}{}
 		go func(p types.Proxy) {
