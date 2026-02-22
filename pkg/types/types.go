@@ -74,16 +74,15 @@ type Email struct {
 // ---------- PayPal Management ----------
 
 type PayPal struct {
-	ID            string    `json:"id"`
-	Email         string    `json:"email"`                // PayPal login email
-	OwnerName     string    `json:"owner_name,omitempty"`
-	Verified      bool      `json:"verified"`
-	Balance       float64   `json:"balance"`  // manually entered
-	Currency      string    `json:"currency"` // "USD" | "EUR" etc.
-	Status        string    `json:"status"`   // "active" | "limited" | "suspended"
-	Note          string    `json:"note,omitempty"`
-	LinkedEmailID *string   `json:"linked_email_id,omitempty"` // linked email account
-	CreatedAt     time.Time `json:"created_at"`
+	ID        string    `json:"id"`
+	Email     string    `json:"email"`                // PayPal login email
+	OwnerName string    `json:"owner_name,omitempty"`
+	Verified  bool      `json:"verified"`
+	Balance   float64   `json:"balance"`  // manually entered
+	Currency  string    `json:"currency"` // "USD" | "EUR" etc.
+	Status    string    `json:"status"`   // "active" | "limited" | "suspended"
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ---------- Income Tracking ----------

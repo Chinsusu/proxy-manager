@@ -860,11 +860,18 @@ document.addEventListener('DOMContentLoaded', () => {
 // Email Management
 // ============================================================
 class EmailManager {
-  constructor(pgw) { this.pgw = pgw; this.data = []; this.sortKey = 'address'; this.sortAsc = true; }
+  constructor(pgw) { this.pgw = pgw; this.data = []; this.paypals = []; this.sortKey = 'address'; this.sortAsc = true; }
 
   async init() {
     document.getElementById('form-email')?.addEventListener('submit', e => { e.preventDefault(); this.addEmail(); });
-    await this.load();
+    await Promise.all([this.loadPayPals(), this.load()]);
+  }
+
+  async loadPayPals() {
+    try {
+      const res = await fetch('/api/v1/paypals');
+      this.paypals = res.ok ? (await res.json() || []) : [];
+    } catch (_) { this.paypals = []; }
   }
 
   async load() {
@@ -925,12 +932,16 @@ class EmailManager {
       const m = { active: 'success', disabled: 'secondary', banned: 'danger' };
       return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
     };
-    tbody.innerHTML = this.data.map(e => `
+    tbody.innerHTML = this.data.map(e => {
+      const linkedPayPal = e.paypal_id
+        ? (this.paypals.find(p => p.id === e.paypal_id)?.email || e.paypal_id)
+        : '—';
+      return `
       <tr>
         <td><span class="fw-medium">${e.address}</span></td>
         <td><span class="badge bg-label-primary">${e.provider || 'other'}</span></td>
         <td>${statusBadge(e.status || 'active')}</td>
-        <td>${e.paypal_id ? '<span class="badge bg-label-warning">Linked</span>' : '<span class="text-muted">—</span>'}</td>
+        <td class="text-muted small">${linkedPayPal !== '—' ? `<span class="badge bg-label-warning">${linkedPayPal}</span>` : '—'}</td>
         <td class="text-muted small">${e.note || '—'}</td>
         <td class="text-muted small">${this.fmtDate(e.created_at)}</td>
         <td>
@@ -943,13 +954,13 @@ class EmailManager {
             </button>
           </div>
         </td>
-      </tr>`).join('');
+      </tr>`;
+    }).join('');
   }
 
   editEmail(id) {
     const e = this.data.find(x => x.id === id);
     if (!e) return;
-    // Populate modal fields
     document.getElementById('edit-email-id').value = e.id;
     document.getElementById('edit-email-address').value = e.address || '';
     document.getElementById('edit-email-provider').value = e.provider || 'gmail';
@@ -957,12 +968,17 @@ class EmailManager {
     document.getElementById('edit-email-password').value = e.password || '';
     document.getElementById('edit-email-recovery').value = e.recovery_email || '';
     document.getElementById('edit-email-note').value = e.note || '';
+    // Populate PayPal dropdown
+    const sel = document.getElementById('edit-email-paypal');
+    sel.innerHTML = '<option value="">— None —</option>' +
+      this.paypals.map(p => `<option value="${p.id}" ${e.paypal_id === p.id ? 'selected' : ''}>${p.email}</option>`).join('');
     const modal = new bootstrap.Modal(document.getElementById('editEmailModal'));
     modal.show();
   }
 
   async saveEmail() {
     const id = document.getElementById('edit-email-id').value;
+    const paypal_id = document.getElementById('edit-email-paypal').value || null;
     const body = {
       address: document.getElementById('edit-email-address').value.trim(),
       provider: document.getElementById('edit-email-provider').value,
@@ -970,6 +986,7 @@ class EmailManager {
       password: document.getElementById('edit-email-password').value.trim(),
       recovery_email: document.getElementById('edit-email-recovery').value.trim(),
       note: document.getElementById('edit-email-note').value.trim(),
+      paypal_id,
     };
     try {
       const res = await fetch('/api/v1/emails/' + id, {
@@ -989,18 +1006,11 @@ class EmailManager {
 // PayPal Management
 // ============================================================
 class PayPalManager {
-  constructor(pgw) { this.pgw = pgw; this.data = []; this.emails = []; }
+  constructor(pgw) { this.pgw = pgw; this.data = []; }
 
   async init() {
     document.getElementById('form-paypal')?.addEventListener('submit', e => { e.preventDefault(); this.addPayPal(); });
-    await Promise.all([this.loadEmails(), this.load()]);
-  }
-
-  async loadEmails() {
-    try {
-      const res = await fetch('/api/v1/emails');
-      this.emails = res.ok ? (await res.json() || []) : [];
-    } catch (_) { this.emails = []; }
+    await this.load();
   }
 
   async load() {
@@ -1063,9 +1073,7 @@ class PayPalManager {
       const m = { active: 'success', limited: 'warning', suspended: 'danger' };
       return `<span class="badge bg-label-${m[s] || 'secondary'}">${s}</span>`;
     };
-    tbody.innerHTML = this.data.map(p => {
-      const linkedEmail = p.linked_email_id ? (this.emails.find(e => e.id === p.linked_email_id)?.address || p.linked_email_id) : '—';
-      return `
+    tbody.innerHTML = this.data.map(p => `
       <tr>
         <td><span class="fw-medium">${p.email}</span></td>
         <td>${p.owner_name || '<span class="text-muted">—</span>'}</td>
@@ -1073,7 +1081,6 @@ class PayPalManager {
         <td>${statusBadge(p.status || 'active')}</td>
         <td>${p.verified ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle text-muted"></i>'}</td>
         <td class="text-muted small">${p.note || '—'}</td>
-        <td class="text-muted small">${linkedEmail}</td>
         <td class="text-muted small">${this.fmtDate(p.created_at)}</td>
         <td>
           <div class="d-flex gap-1">
@@ -1085,8 +1092,7 @@ class PayPalManager {
             </button>
           </div>
         </td>
-      </tr>`;
-    }).join('');
+      </tr>`).join('');
   }
 
   editPayPal(id) {
@@ -1100,17 +1106,12 @@ class PayPalManager {
     document.getElementById('edit-paypal-status').value = p.status || 'active';
     document.getElementById('edit-paypal-verified').checked = !!p.verified;
     document.getElementById('edit-paypal-note').value = p.note || '';
-    // populate email dropdown
-    const sel = document.getElementById('edit-paypal-linked-email');
-    sel.innerHTML = '<option value="">— None —</option>' +
-      this.emails.map(e => `<option value="${e.id}" ${p.linked_email_id === e.id ? 'selected' : ''}>${e.address}</option>`).join('');
     const modal = new bootstrap.Modal(document.getElementById('editPayPalModal'));
     modal.show();
   }
 
   async savePayPal() {
     const id = document.getElementById('edit-paypal-id').value;
-    const linked_email_id = document.getElementById('edit-paypal-linked-email').value || null;
     const body = {
       email: document.getElementById('edit-paypal-email').value.trim(),
       owner_name: document.getElementById('edit-paypal-owner').value.trim(),
@@ -1119,7 +1120,6 @@ class PayPalManager {
       status: document.getElementById('edit-paypal-status').value,
       verified: document.getElementById('edit-paypal-verified').checked,
       note: document.getElementById('edit-paypal-note').value.trim(),
-      linked_email_id,
     };
     try {
       const res = await fetch('/api/v1/paypals/' + id, {
