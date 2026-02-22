@@ -8,7 +8,7 @@ class PGWManager {
     this.nodes = [];
     this.loading = false;
     // sorting state (persisted)
-    this.pSort = 'address'; this.pAsc = true;
+    this.pSort = 'imported'; this.pAsc = false;
     this.mSort = 'client'; this.mAsc = true;
     try {
       const sp = JSON.parse(localStorage.getItem('pgw_sort_p2') || '{}');
@@ -219,6 +219,7 @@ class PGWManager {
       if (key === 'latency') return (p.latency_ms == null ? Infinity : p.latency_ms);
       if (key === 'exit') return (p.exit_ip || '');
       if (key === 'last') return (p.last_checked_at || '');
+      if (key === 'imported') return (p.created_at || '');
       return ((p.host || '') + ':' + p.port).toLowerCase();
     };
     const sorted = (this.proxies || []).slice().sort((a, b) => { const va = val(a), vb = val(b); if (va < vb) return asc ? -1 : 1; if (va > vb) return asc ? 1 : -1; return 0; });
@@ -237,6 +238,7 @@ class PGWManager {
         + '<th>ISP</th>'
         + '<th data-k="last" class="sortable">Last Check' + (key === 'last' ? arrow : '') + '</th>'
         + '<th>Node VPS</th>'
+        + '<th data-k="imported" class="sortable">Imported' + (key === 'imported' ? arrow : '') + '</th>'
         + '<th>Actions</th>'
         + '</tr>';
       thead.querySelectorAll('th.sortable').forEach((th) => {
@@ -314,6 +316,15 @@ class PGWManager {
       return isp.replace(/\s*(Telecommunications?|Communications?|Technologies?|Technology|Corp(?:oration)?|Ltd|Limited|Inc(?:orporated)?|S\.A\.|LLC|Co\.)\s*$/gi, '').trim() || isp;
     };
 
+    const importedAt = proxy.created_at
+      ? new Date(proxy.created_at).toLocaleString()
+      : '—';
+
+    const isAssigned = !!(proxy.node_id);
+    const deleteBtn = isAssigned
+      ? `<button class="btn btn-sm btn-secondary" disabled title="Proxy đang dùng bởi node, unassign trước">×</button>`
+      : `<button class="btn btn-sm btn-danger" onclick="pgw.deleteProxy('${proxy.id}')" data-tooltip="Delete proxy">×</button>`;
+
     tr.innerHTML = `
       <td><code>${proxy.id.slice(0, 8)}</code></td>
       <td>${proxy.type}</td>
@@ -325,13 +336,12 @@ class PGWManager {
       <td><small class="text-muted">${truncISP(proxy.isp)}</small></td>
       <td>${lastChecked}</td>
       <td>${nodeSelect}</td>
+      <td><small class="text-muted">${importedAt}</small></td>
       <td>
         <button class="btn btn-sm btn-secondary" onclick="pgw.checkProxyHealth('${proxy.id}')" data-tooltip="Health check">
           Check
         </button>
-        <button class="btn btn-sm btn-danger" onclick="pgw.deleteProxy('${proxy.id}')" data-tooltip="Delete proxy">
-          ×
-        </button>
+        ${deleteBtn}
       </td>
     `;
 

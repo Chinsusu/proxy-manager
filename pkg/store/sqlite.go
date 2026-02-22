@@ -150,6 +150,7 @@ func (s *sqliteStore) migrate() error {
 		`ALTER TABLE nodes ADD COLUMN email_id TEXT`,
 		`ALTER TABLE nodes ADD COLUMN lan_subnet TEXT`,
 		`ALTER TABLE nodes ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE proxies ADD COLUMN created_at TEXT`,
 	} {
 		_, _ = s.db.Exec(alter) // intentionally ignore error (column may already exist)
 	}
@@ -188,15 +189,15 @@ func fmtTime(t *time.Time) string {
 // ---------- Proxies ----------
 
 func (s *sqliteStore) ListProxies() []types.Proxy {
-	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at,node_id,region,isp FROM proxies ORDER BY host,port,id`)
+	rows, err := s.db.Query(`SELECT id,label,type,host,port,username,password,enabled,status,latency_ms,exit_ip,last_checked_at,node_id,region,isp,created_at FROM proxies ORDER BY host,port,id`)
 	if err != nil { return nil }
 	defer rows.Close()
 	var out []types.Proxy
 	for rows.Next() {
 		var p types.Proxy
-		var label, username, password, exitIP, lastChecked, nodeID, region, isp sql.NullString
+		var label, username, password, exitIP, lastChecked, nodeID, region, isp, createdAt sql.NullString
 		var latencyMs sql.NullInt64
-		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked, &nodeID, &region, &isp)
+		_ = rows.Scan(&p.ID, &label, &p.Type, &p.Host, &p.Port, &username, &password, &p.Enabled, &p.Status, &latencyMs, &exitIP, &lastChecked, &nodeID, &region, &isp, &createdAt)
 		if label.Valid && label.String != "" { p.Label = label.String }
 		if username.Valid && username.String != "" { p.Username = &username.String }
 		if password.Valid && password.String != "" { p.Password = &password.String }
@@ -206,6 +207,9 @@ func (s *sqliteStore) ListProxies() []types.Proxy {
 		if nodeID.Valid && nodeID.String != "" { p.NodeID = &nodeID.String }
 		if region.Valid && region.String != "" { p.Region = &region.String }
 		if isp.Valid && isp.String != "" { p.ISP = &isp.String }
+		if createdAt.Valid && createdAt.String != "" {
+			if t := parseTime(createdAt.String); t != nil { p.CreatedAt = *t }
+		}
 		out = append(out, p)
 	}
 	return out
@@ -214,9 +218,10 @@ func (s *sqliteStore) ListProxies() []types.Proxy {
 func (s *sqliteStore) CreateProxy(p types.Proxy) types.Proxy {
 	if p.ID == "" { p.ID = uuid.New().String() }
 	p.Status = types.StatusDown
+	p.CreatedAt = time.Now().UTC()
 	_, _ = s.db.Exec(
-		`INSERT OR IGNORE INTO proxies(id,label,type,host,port,username,password,enabled,status) VALUES(?,?,?,?,?,?,?,?,?)`,
-		p.ID, p.Label, p.Type, p.Host, p.Port, nullStr(p.Username), nullStr(p.Password), p.Enabled, string(p.Status),
+		`INSERT OR IGNORE INTO proxies(id,label,type,host,port,username,password,enabled,status,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)`,
+		p.ID, p.Label, p.Type, p.Host, p.Port, nullStr(p.Username), nullStr(p.Password), p.Enabled, string(p.Status), p.CreatedAt.Format(time.RFC3339Nano),
 	)
 	return p
 }

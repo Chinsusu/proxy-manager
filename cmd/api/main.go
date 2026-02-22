@@ -266,6 +266,16 @@ func main() {
 		// DELETE /v1/proxies/{id}
 		if r.Method == http.MethodDelete && path != "" && !strings.Contains(path, "/") {
 			id := path
+			// Block delete if proxy is assigned to a node
+			for _, p := range st.ListProxies() {
+				if p.ID == id {
+					if p.NodeID != nil && *p.NodeID != "" {
+						httpx.JSON(w, 409, map[string]string{"error": "proxy is assigned to a node, unassign first"})
+						return
+					}
+					break
+				}
+			}
 			// collect ports of mappings referencing this proxy (before delete)
 			ports := map[int]struct{}{}
 			for _, mv := range st.ListMappings() {

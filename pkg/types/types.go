@@ -28,6 +28,7 @@ type Proxy struct {
 	ISP           *string     `json:"isp,omitempty"`
 	LastCheckedAt *time.Time  `json:"last_checked_at,omitempty"`
 	NodeID        *string     `json:"node_id,omitempty"`
+	CreatedAt     time.Time   `json:"created_at"`
 }
 
 type Client struct {
