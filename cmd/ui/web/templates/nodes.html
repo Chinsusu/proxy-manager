@@ -479,7 +479,7 @@
                 <div class="collapse" id="node-body-${n.id}">
                     <div class="row g-0">
                         <!-- Proxies panel -->
-                        <div class="col-md-4 border-end">
+                        <div class="col border-end">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-diagram-3 me-1"></i>Proxies
                                     <span class="badge bg-label-primary ms-1" id="proxy-count-${n.id}">${nodeProxies.length}</span>
@@ -490,26 +490,34 @@
                             </div>
                         </div>
                         <!-- Mappings panel -->
-                        <div class="col-md-4 border-end">
+                        <div class="col border-end">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-arrow-left-right me-1"></i>Mappings
                                     <span class="badge bg-label-primary ms-1">${nodeMappings.length}</span>
                                 </span>
                             </div>
-                            <div class="px-2 pb-2">
+                            <div class="px-0 pb-0">
                                 ${renderMappingsTable(nodeMappings, n.id, nodeProxies)}
                             </div>
                         </div>
                         <!-- Users panel -->
-                        <div class="col-md-4">
-                            <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
-                                <span class="small fw-semibold text-muted"><i class="bi bi-people me-1"></i>Users</span>
-                                <button class="btn btn-xs btn-outline-primary" onclick="NodeManager.addUser('${n.id}')" title="Add user">
-                                    <i class="bi bi-plus"></i> Add
-                                </button>
+                        <div class="col" style="max-width:220px;min-width:160px">
+                            <div class="px-3 pt-2 pb-1 d-flex align-items-center">
+                                <span class="small fw-semibold text-muted"><i class="bi bi-people me-1"></i>Users
+                                    <span class="badge bg-label-secondary ms-1" id="user-count-${n.id}">—</span>
+                                </span>
                             </div>
-                            <div class="px-2 pb-2" id="users-panel-${n.id}">
-                                <div class="spinner-border spinner-border-sm text-muted ms-2" role="status"></div>
+                            <div id="users-panel-${n.id}" style="min-height:32px">
+                                <div class="spinner-border spinner-border-sm text-muted ms-3 mt-1" role="status"></div>
+                            </div>
+                            <div class="px-2 pb-2 pt-1 border-top bg-light bg-opacity-50">
+                                <form class="d-flex gap-1 align-items-center" onsubmit="event.preventDefault(); NodeManager.addUser('${n.id}', this)">
+                                    <input name="username" type="text" class="form-control form-control-sm"
+                                        maxlength="12" placeholder="username…" autocomplete="off" style="font-size:.75rem">
+                                    <button type="submit" class="btn btn-sm btn-primary px-2">
+                                        <i class="bi bi-plus-lg"></i>
+                                    </button>
+                                </form>
                             </div>
                         </div>
                     </div>
@@ -705,23 +713,16 @@
             const panel = document.getElementById('users-panel-' + nodeId);
             if (!panel) return;
             const res = await fetch(api(`/v1/nodes/${nodeId}/users`), { headers: hdr() });
-            if (!res.ok) { panel.innerHTML = '<span class="text-danger small">Error</span>'; return; }
-            const users = await res.json();
-            panel.innerHTML = renderUsersTable(users || [], nodeId);
+            if (!res.ok) { panel.innerHTML = '<span class="text-danger small ms-2">Error</span>'; return; }
+            const users = await res.json() || [];
+            panel.innerHTML = renderUsersTable(users, nodeId);
+            const badge = document.getElementById('user-count-' + nodeId);
+            if (badge) badge.textContent = users.length;
         }
 
-        let _addUserNodeId = null;
-        function addUser(nodeId) {
-            _addUserNodeId = nodeId;
-            document.getElementById('addUserName').value = '';
-            new bootstrap.Modal(document.getElementById('modalAddUser')).show();
-            setTimeout(() => document.getElementById('addUserName').focus(), 300);
-        }
-
-        document.getElementById('btnConfirmAddUser').addEventListener('click', async () => {
-            const nodeId = _addUserNodeId;
-            if (!nodeId) return;
-            const name = document.getElementById('addUserName').value.trim();
+        async function addUser(nodeId, form) {
+            const input = form.querySelector('[name=username]');
+            const name = input ? input.value.trim() : '';
             const res = await fetch(api(`/v1/nodes/${nodeId}/users`), {
                 method: 'POST',
                 headers: { ...hdr(), 'Content-Type': 'application/json' },
@@ -731,14 +732,9 @@
                 const err = await res.json().catch(() => ({}));
                 alert(err.error || 'Failed to add user'); return;
             }
-            bootstrap.Modal.getInstance(document.getElementById('modalAddUser')).hide();
+            if (input) input.value = '';
             await loadUsers(nodeId);
-        });
-
-        // Allow Enter key in username field
-        document.getElementById('addUserName').addEventListener('keydown', e => {
-            if (e.key === 'Enter') document.getElementById('btnConfirmAddUser').click();
-        });
+        }
 
         async function deleteUser(nodeId, userId) {
             if (!confirm(`Delete user #${userId}?`)) return;
