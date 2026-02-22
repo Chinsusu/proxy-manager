@@ -484,10 +484,10 @@
                         <div class="border-end" style="width:45%;flex:0 0 45%">
                             <div class="px-3 pt-2 pb-1 d-flex align-items-center justify-content-between">
                                 <span class="small fw-semibold text-muted"><i class="bi bi-arrow-left-right me-1"></i>Mappings
-                                    <span class="badge bg-label-primary ms-1">${nodeMappings.length}</span>
+                                    <span class="badge bg-label-primary ms-1" id="mappings-count-${n.id}">${nodeMappings.length}</span>
                                 </span>
                             </div>
-                            <div class="px-0 pb-0 d-flex flex-column flex-grow-1">
+                            <div class="px-0 pb-0 d-flex flex-column flex-grow-1" id="mappings-panel-${n.id}">
                                 ${renderMappingsTable(nodeMappings, n.id, nodeProxies)}
                             </div>
                         </div>
@@ -642,14 +642,30 @@
                 });
                 if (!mr.ok) { const e = await mr.json().catch(() => ({})); alert('Error: ' + (e.error || mr.status)); return; }
                 form.reset();
-                refresh();
+                await loadMappings(nodeId);
             } catch (e) { alert('Error: ' + e.message); }
+        }
+
+        async function loadMappings(nodeId) {
+            const [mRes, pRes] = await Promise.all([
+                fetch(api('/v1/mappings'), { headers: hdr() }),
+                fetch(api('/v1/proxies'), { headers: hdr() }),
+            ]);
+            if (!mRes.ok || !pRes.ok) return;
+            const allMappings = await mRes.json() || [];
+            const allProxies = await pRes.json() || [];
+            const nodeMappings = allMappings.filter(m => m.node_id === nodeId || (m.proxy && allProxies.find(p => p.id === m.proxy.id && p.node_id === nodeId)));
+            const nodeProxies = allProxies.filter(p => p.node_id === nodeId);
+            const panel = document.getElementById('mappings-panel-' + nodeId);
+            if (panel) panel.innerHTML = renderMappingsTable(nodeMappings, nodeId, nodeProxies);
+            const badge = document.getElementById('mappings-count-' + nodeId);
+            if (badge) badge.textContent = nodeMappings.length;
         }
 
         async function deleteMapping(mappingId, nodeId) {
             if (!confirm('Delete this mapping?')) return;
             const res = await fetch(api(`/v1/mappings/${mappingId}`), { method: 'DELETE', headers: hdr() });
-            if (res.ok) refresh();
+            if (res.ok) await loadMappings(nodeId);
             else alert('Delete failed');
         }
 
