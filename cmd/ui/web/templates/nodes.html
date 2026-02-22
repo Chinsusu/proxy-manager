@@ -444,7 +444,7 @@
                         <i class="bi bi-envelope text-muted" style="font-size:.8rem"></i>
                         <select id="email-sel-${n.id}" class="form-select form-select-sm" style="max-width:280px">
                             <option value="">— No email —</option>
-                            ${emails.map(e => '<option value="' + e.id + '"' + (n.email_id === e.id ? ' selected' : '') + '>' + e.address + '</option>').join('')}
+                            ${emails.filter(e => !nodes.some(nd => nd.id !== n.id && nd.email_id === e.id)).map(e => '<option value="' + e.id + '"' + (n.email_id === e.id ? ' selected' : '') + '>' + e.address + '</option>').join('')}
                         </select>
                         <button class="btn btn-xs btn-outline-primary" onclick="NodeManager.assignEmail('${n.id}')">
                             <i class="bi bi-check2"></i> Assign
