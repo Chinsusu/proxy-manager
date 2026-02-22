@@ -484,7 +484,7 @@ PGW_API_ADDR=:8080
 PGW_HEALTH_INTERVAL=30s
 PGW_STRICT_OUTPUT=true
 PGW_WAN_IFACE=eth0
-PGW_LAN_IFACE=eth0
+PGW_LAN_IFACE=ens19
 PGW_API_BASE=%s
 PGW_AGENT_TOKEN=%s
 `, masterURL, agentToken)
@@ -533,6 +533,26 @@ done
 # pgw-node has its own env file AND needs 'dev' subcommand
 sed -i 's|EnvironmentFile=/etc/pgw/pgw.env|EnvironmentFile=/etc/pgw-node/pgw-node.env|' /etc/systemd/system/pgw-node.service
 sed -i 's|ExecStart=/usr/local/bin/pgw-node$|ExecStart=/usr/local/bin/pgw-node dev|' /etc/systemd/system/pgw-node.service
+
+# pgw-fwd uses a systemd template unit (per-port instance, managed by API)
+cat > /etc/systemd/system/pgw-fwd@.service << EOF
+[Unit]
+Description=PGW Forwarder instance on port %i
+After=network.target
+
+[Service]
+EnvironmentFile=/etc/pgw/pgw.env
+Environment=PGW_FWD_ADDR=:%i
+ExecStart=/usr/local/bin/pgw-fwd
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Remove static pgw-fwd.service if it was previously installed
+rm -f /etc/systemd/system/pgw-fwd.service
 systemctl daemon-reload
 `
 	if err := run(strings.TrimSpace(unitInstall)); err != nil {
