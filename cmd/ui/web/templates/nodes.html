@@ -183,11 +183,37 @@
     .proxy-status-badge {
         font-size: 0.7rem;
     }
+
+    /* Node collapse chevron rotation */
+    .node-card .collapse-icon {
+        transition: transform .2s ease;
+    }
+
+    .node-card .collapse:not(.show)~* .collapse-icon,
+    [aria-expanded="false"] .collapse-icon {
+        transform: rotate(-90deg);
+    }
 </style>
 
 <script>
     const NodeManager = (() => {
         let currentDeployNodeId = null;
+
+        // Chevron rotation on Bootstrap collapse events
+        document.addEventListener('show.bs.collapse', e => {
+            const id = e.target.id.replace('node-body-', '');
+            const chevron = document.getElementById('chevron-' + id);
+            if (chevron) chevron.style.transform = 'rotate(0deg)';
+            const btn = e.target.closest('.card')?.querySelector('[data-bs-toggle="collapse"]');
+            if (btn) btn.setAttribute('aria-expanded', 'true');
+        });
+        document.addEventListener('hide.bs.collapse', e => {
+            const id = e.target.id.replace('node-body-', '');
+            const chevron = document.getElementById('chevron-' + id);
+            if (chevron) chevron.style.transform = 'rotate(-90deg)';
+            const btn = e.target.closest('.card')?.querySelector('[data-bs-toggle="collapse"]');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+        });
 
         const token = () => {
             const m = document.cookie.match(/pgw_jwt=([^;]+)/);
@@ -386,7 +412,12 @@
                 <div class="card-header py-2">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="d-flex align-items-center gap-3 flex-wrap">
-                            <strong>${n.name}</strong>
+                            <button class="btn btn-link p-0 text-body fw-bold text-decoration-none d-flex align-items-center gap-2"
+                                    data-bs-toggle="collapse" data-bs-target="#node-body-${n.id}"
+                                    aria-expanded="true" style="font-size:inherit">
+                                <i class="bi bi-chevron-down collapse-icon" id="chevron-${n.id}" style="font-size:.75rem;transition:transform .2s"></i>
+                                ${n.name}
+                            </button>
                             <code class="text-muted" style="font-size:.8rem">${n.ssh_host || '—'}:${n.ssh_port || 22}</code>
                             ${statusBadge(n.status)}
                             ${deployBadge(n.deploy_status)}
@@ -420,7 +451,7 @@
                         </button>
                     </div>
                 </div>
-                <div class="card-body p-0">
+                <div class="collapse show" id="node-body-${n.id}">
                     <div class="row g-0">
                         <!-- Proxies panel -->
                         <div class="col-md-6 border-end">
