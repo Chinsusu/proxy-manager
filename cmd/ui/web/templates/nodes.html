@@ -366,7 +366,7 @@
                             <option value="">— No email —</option>
                             ${emails.map(e => '<option value="' + e.id + '"' + (n.email_id === e.id ? ' selected' : '') + '>' + e.address + '</option>').join('')}
                         </select>
-                        <button class="btn btn-xs btn-outline-primary" onclick="assignEmail('${n.id}')">
+                        <button class="btn btn-xs btn-outline-primary" onclick="NodeManager.assignEmail('${n.id}')">
                             <i class="bi bi-check2"></i> Assign
                         </button>
                     </div>
@@ -554,7 +554,7 @@
         refresh();
         setInterval(refresh, 15000);
 
-        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping, unassignProxy };
+        return { refresh, deploy, showDeployLog, refreshDeployLog, deleteNode, createMapping, deleteMapping, unassignProxy, assignEmail };
     })();
 </script>
 {{end}}
