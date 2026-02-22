@@ -1007,6 +1007,40 @@ func main() {
 			return
 		}
 
+		// GET /v1/nodes/{id}/users  — list users for this node
+		if sub == "users" && r.Method == http.MethodGet {
+			httpx.JSON(w, 200, st.ListNodeUsers(nodeID))
+			return
+		}
+		// POST /v1/nodes/{id}/users — create user (auto random if username empty)
+		if sub == "users" && r.Method == http.MethodPost {
+			var body struct{ Username string `json:"username"` }
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if body.Username == "" {
+				body.Username = randomWindowsUsername()
+			}
+			u, ok := st.CreateNodeUser(nodeID, body.Username)
+			if !ok {
+				httpx.JSON(w, 500, map[string]string{"error": "create failed"}); return
+			}
+			httpx.JSON(w, 201, u)
+			return
+		}
+		// DELETE /v1/nodes/{id}/users/{userID}
+		if len(parts) == 3 && parts[1] == "users" {
+			userID := 0
+			if _, err := fmt.Sscanf(parts[2], "%d", &userID); err != nil || userID <= 0 {
+				httpx.JSON(w, 400, map[string]string{"error": "invalid user id"}); return
+			}
+			if r.Method == http.MethodDelete {
+				if !st.DeleteNodeUser(nodeID, userID) {
+					httpx.JSON(w, 404, map[string]string{"error": "not found"}); return
+				}
+				w.WriteHeader(204)
+				return
+			}
+		}
+
 		switch r.Method {
 		case http.MethodGet:
 			node, ok := st.GetNode(nodeID)
@@ -1338,6 +1372,16 @@ func ed25519Verify(pubKey, message, sig []byte) bool {
 		return false
 	}
 	return ed25519.Verify(ed25519.PublicKey(pubKey), message, sig)
+}
+
+// randomWindowsUsername generates a random Windows-style username.
+func randomWindowsUsername() string {
+	adjectives := []string{"Fast", "Blue", "Dark", "Cool", "Star", "Bold", "Iron", "Gold", "Free", "Wild"}
+	nouns      := []string{"Fox", "Wolf", "Bear", "Hawk", "Lion", "Deer", "Crow", "Frog", "Duck", "Fish"}
+	adj  := adjectives[time.Now().UnixNano()%int64(len(adjectives))]
+	noun := nouns[(time.Now().UnixNano()/int64(len(adjectives)))%int64(len(nouns))]
+	num  := time.Now().UnixNano() % 9000 + 1000
+	return fmt.Sprintf("%s%s%d", adj, noun, num)
 }
 
 // maskIfSet returns "****" if the value is non-empty (encrypted), else "".

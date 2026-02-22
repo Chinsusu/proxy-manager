@@ -422,4 +422,6 @@ func (s *fileStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool   
 func (s *fileStore) GetNodeAssignments(nodeID string) types.NodeAssignment {
 	return types.NodeAssignment{NodeID: nodeID}
 }
-
+func (s *fileStore) ListNodeUsers(nodeID string) []types.NodeUser                      { return nil }
+func (s *fileStore) CreateNodeUser(nodeID, username string) (types.NodeUser, bool)     { return types.NodeUser{}, false }
+func (s *fileStore) DeleteNodeUser(nodeID string, userID int) bool                     { return false }

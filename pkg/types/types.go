@@ -157,3 +157,10 @@ type MappingStatusReport struct {
 	Region      string `json:"region,omitempty"`
 	ISP         string `json:"isp,omitempty"`
 }
+
+// NodeUser represents a Windows user account on a node.
+type NodeUser struct {
+	ID       int    `json:"id"`       // sequential, reuses gaps (1-based)
+	NodeID   string `json:"node_id"`
+	Username string `json:"username"`
+}

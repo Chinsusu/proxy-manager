@@ -128,6 +128,13 @@ func (s *sqliteStore) migrate() error {
 			deployed_at TEXT,
 			created_at TEXT NOT NULL
 		)`,
+		`CREATE TABLE IF NOT EXISTS node_users (
+			id INTEGER NOT NULL,
+			node_id TEXT NOT NULL,
+			username TEXT NOT NULL,
+			PRIMARY KEY (id, node_id),
+			FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+		)`,
 	}
 	for _, stmt := range stmts {
 		if _, err := s.db.Exec(stmt); err != nil {
@@ -764,6 +771,51 @@ func scanNode(rows *sql.Rows) types.Node {
 	if lanSubnet.Valid { n.LanSubnet = lanSubnet.String }
 	if t := parseTime(createdAt); t != nil { n.CreatedAt = *t }
 	return n
+}
+
+// ---------- Node Users ----------
+
+func (s *sqliteStore) ListNodeUsers(nodeID string) []types.NodeUser {
+	rows, err := s.db.Query(`SELECT id, node_id, username FROM node_users WHERE node_id=? ORDER BY id`, nodeID)
+	if err != nil { return nil }
+	defer rows.Close()
+	var out []types.NodeUser
+	for rows.Next() {
+		var u types.NodeUser
+		_ = rows.Scan(&u.ID, &u.NodeID, &u.Username)
+		out = append(out, u)
+	}
+	return out
+}
+
+// nextNodeUserID finds the smallest positive integer not used for this node.
+func (s *sqliteStore) nextNodeUserID(nodeID string) int {
+	rows, err := s.db.Query(`SELECT id FROM node_users WHERE node_id=? ORDER BY id`, nodeID)
+	if err != nil { return 1 }
+	defer rows.Close()
+	var ids []int
+	for rows.Next() {
+		var id int
+		_ = rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	for i, v := range ids {
+		if v != i+1 { return i + 1 }
+	}
+	return len(ids) + 1
+}
+
+func (s *sqliteStore) CreateNodeUser(nodeID, username string) (types.NodeUser, bool) {
+	nextID := s.nextNodeUserID(nodeID)
+	_, err := s.db.Exec(`INSERT INTO node_users(id, node_id, username) VALUES(?,?,?)`, nextID, nodeID, username)
+	if err != nil { return types.NodeUser{}, false }
+	return types.NodeUser{ID: nextID, NodeID: nodeID, Username: username}, true
+}
+
+func (s *sqliteStore) DeleteNodeUser(nodeID string, userID int) bool {
+	res, _ := s.db.Exec(`DELETE FROM node_users WHERE node_id=? AND id=?`, nodeID, userID)
+	n, _ := res.RowsAffected()
+	return n > 0
 }
 
 // Ensure sqliteStore satisfies Store interface at compile time.

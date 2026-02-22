@@ -63,6 +63,9 @@ type Store interface {
 	UpdateNodeStatus(id, status, version string, lastSeen time.Time) bool
 	UpdateNodeDeploy(id, deployStatus, deployLog string) bool
 	GetNodeAssignments(nodeID string) types.NodeAssignment
+	ListNodeUsers(nodeID string) []types.NodeUser
+	CreateNodeUser(nodeID, username string) (types.NodeUser, bool)
+	DeleteNodeUser(nodeID string, userID int) bool
 }
 
 // TelemetryUpdate holds a single proxy telemetry result for batch updates.
@@ -452,4 +455,6 @@ func (s *memoryStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool 
 func (s *memoryStore) GetNodeAssignments(nodeID string) types.NodeAssignment {
 	return types.NodeAssignment{NodeID: nodeID}
 }
-
+func (s *memoryStore) ListNodeUsers(nodeID string) []types.NodeUser                      { return nil }
+func (s *memoryStore) CreateNodeUser(nodeID, username string) (types.NodeUser, bool)     { return types.NodeUser{}, false }
+func (s *memoryStore) DeleteNodeUser(nodeID string, userID int) bool                     { return false }
