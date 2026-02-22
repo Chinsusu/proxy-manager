@@ -694,14 +694,23 @@ func (s *sqliteStore) UpdateNodeDeploy(id, deployStatus, deployLog string) bool 
 
 func (s *sqliteStore) GetNodeAssignments(nodeID string) types.NodeAssignment {
 	result := types.NodeAssignment{NodeID: nodeID}
+	// Include both:
+	// 1. Proxies assigned via mappings (client routing)
+	// 2. Proxies directly assigned to this node via proxy.node_id (health-check assignments)
 	rows, err := s.db.Query(`
-		SELECT m.id, c.ip_cidr, m.local_redirect_port,
+		SELECT m.id, COALESCE(c.ip_cidr, ''), COALESCE(m.local_redirect_port, 0),
 		       p.id, p.label, p.type, p.host, p.port, p.username, p.password, p.enabled, p.status, p.latency_ms, p.exit_ip, p.last_checked_at
 		FROM mappings m
 		JOIN clients c ON c.id = m.client_id
 		JOIN proxies p ON p.id = m.proxy_id
 		WHERE m.node_id = ?
-		ORDER BY m.id`, nodeID)
+		UNION
+		SELECT p.id, '', 0,
+		       p.id, p.label, p.type, p.host, p.port, p.username, p.password, p.enabled, p.status, p.latency_ms, p.exit_ip, p.last_checked_at
+		FROM proxies p
+		WHERE p.node_id = ?
+		  AND p.id NOT IN (SELECT proxy_id FROM mappings WHERE node_id = ?)
+		ORDER BY 1`, nodeID, nodeID, nodeID)
 	if err != nil { return result }
 	defer rows.Close()
 	for rows.Next() {
