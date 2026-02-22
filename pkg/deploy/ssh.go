@@ -139,6 +139,21 @@ func transferBinary(client *gossh.Client, localPath, remotePath string) error {
 	if err != nil {
 		return fmt.Errorf("read local binary: %w", err)
 	}
+	// Ensure parent directory exists
+	mkdirSess, err := client.NewSession()
+	if err != nil {
+		return err
+	}
+	dir := "/"
+	for i := len(remotePath) - 1; i >= 0; i-- {
+		if remotePath[i] == '/' {
+			dir = remotePath[:i]
+			break
+		}
+	}
+	_ = mkdirSess.Run("mkdir -p " + dir)
+	mkdirSess.Close()
+
 	sess, err := client.NewSession()
 	if err != nil {
 		return err
